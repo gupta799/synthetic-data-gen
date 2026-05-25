@@ -11,6 +11,7 @@ from pathlib import Path
 from synthetic_data_gen.builder import BuildConfig, build_dataset
 from synthetic_data_gen.types import (
     CliArg,
+    EmbeddingDevice,
     EmbeddingModelName,
     JsonObject,
     ModelName,
@@ -33,6 +34,7 @@ def cmd_build(args: argparse.Namespace) -> None:
         generator_model=ModelName(args.generator_model),
         ollama_base_url=OllamaBaseUrl(args.ollama_base_url),
         embedding_model=EmbeddingModelName(args.embedding_model),
+        embedding_device=EmbeddingDevice(args.embedding_device),
         generation_batch_size=args.generation_batch_size,
         similarity_threshold=args.similarity_threshold,
         max_per_seed_group=args.max_per_seed_group,
@@ -68,6 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
     )
     build.add_argument("--embedding-model", default="BAAI/bge-small-en-v1.5")
+    build.add_argument(
+        "--embedding-device",
+        default="auto",
+        choices=("auto", "cpu", "cuda", "mps"),
+        help="Device for local embedding diversity checks. Auto prefers CUDA, then MPS, then CPU.",
+    )
     build.add_argument("--generation-batch-size", type=int, default=4)
     build.add_argument("--similarity-threshold", type=float, default=0.88)
     build.add_argument("--max-per-seed-group", type=int, default=5)

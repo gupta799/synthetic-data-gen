@@ -16,6 +16,7 @@ from synthetic_data_gen.client import (
     GenerationClient,
     assert_ollama_model_available,
 )
+from synthetic_data_gen.console import log_info, log_success, log_warning
 from synthetic_data_gen.embeddings import DiversityIndex, Embedder, SentenceTransformerEmbedder
 from synthetic_data_gen.labels import LABELS
 from synthetic_data_gen.observability import EventLogger, WandbLogger, configure_langsmith
@@ -27,6 +28,7 @@ from synthetic_data_gen.splitting import split_exact_by_route, validate_exact_sp
 from synthetic_data_gen.types import (
     ArtifactName,
     ArtifactType,
+    EmbeddingDevice,
     EmbeddingModelName,
     EventName,
     GeneratedText,
@@ -58,6 +60,7 @@ class BuildConfig:
     generator_model: ModelName = ModelName("gemma4:e2b")
     ollama_base_url: OllamaBaseUrl = OllamaBaseUrl("http://localhost:11434")
     embedding_model: EmbeddingModelName = EmbeddingModelName("BAAI/bge-small-en-v1.5")
+    embedding_device: EmbeddingDevice = EmbeddingDevice("auto")
     generation_batch_size: int = 4
     similarity_threshold: float = 0.88
     max_per_seed_group: int = 5
@@ -96,6 +99,7 @@ def build_summary(
     return {
         "generator_model": config.generator_model,
         "embedding_model": config.embedding_model,
+        "embedding_device": config.embedding_device,
         "train_rows": len(train),
         "eval_rows": len(eval_rows),
         "total_rows": len(train) + len(eval_rows),
@@ -140,6 +144,23 @@ def build_dataset(
         langsmith_status=langsmith_status,
         wandb_enabled=bool(config.wandb_project),
     )
+    log_info(
+        GeneratedText("Starting synthetic finance data generation"),
+        {
+            GeneratedText("generator_model"): config.generator_model,
+            GeneratedText("ollama_base_url"): config.ollama_base_url,
+            GeneratedText("embedding_model"): config.embedding_model,
+            GeneratedText("embedding_device_requested"): config.embedding_device,
+            GeneratedText("wandb_enabled"): bool(config.wandb_project),
+            GeneratedText("langsmith_status"): langsmith_status,
+            GeneratedText("out_dir"): out_dir,
+        },
+    )
+    if langsmith_status == GeneratedText("disabled:missing_api_key"):
+        log_warning(
+            GeneratedText("LangSmith tracing skipped because no API key is configured"),
+            {GeneratedText("hint"): "set LANGSMITH_API_KEY or remove --langsmith-project"},
+        )
     wandb_logger = WandbLogger(
         project=config.wandb_project,
         run_name=config.wandb_run_name,
@@ -155,9 +176,27 @@ def build_dataset(
                 temperature=config.temperature,
             )
         if embedder is None:
-            embedder = SentenceTransformerEmbedder(config.embedding_model)
+            embedder = SentenceTransformerEmbedder(
+                config.embedding_model,
+                device=config.embedding_device,
+            )
+            log_info(
+                GeneratedText("Embedding backend ready"),
+                {
+                    GeneratedText("model"): config.embedding_model,
+                    GeneratedText("device"): embedder.device,
+                },
+            )
         if seeds is None:
             seeds = load_seed_pool(max_sujet_rows=config.max_sujet_rows)
+        log_info(
+            GeneratedText("Grounding seeds loaded"),
+            {
+                GeneratedText("seed_count"): len(seeds),
+                GeneratedText("train_size"): config.train_size,
+                GeneratedText("eval_size"): config.eval_size,
+            },
+        )
 
         rng = random.Random(config.seed)
         per_route_goal = (config.train_size + config.eval_size) // len(LABELS)
@@ -322,6 +361,16 @@ def build_dataset(
         )
         (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         event_logger.log(EventName("build_finished"), summary=summary)
+        log_success(
+            GeneratedText("Synthetic dataset written"),
+            {
+                GeneratedText("train_jsonl"): out_dir / "train.jsonl",
+                GeneratedText("eval_jsonl"): out_dir / "eval.jsonl",
+                GeneratedText("summary_json"): out_dir / "summary.json",
+                GeneratedText("train_rows"): len(train),
+                GeneratedText("eval_rows"): len(eval_rows),
+            },
+        )
         wandb_logger.log_artifact(
             ArtifactName("synthetic-finance-router-data"),
             ArtifactType("dataset"),

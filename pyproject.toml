@@ -13,6 +13,7 @@ dependencies = [
   "langchain-ollama>=0.2.0",
   "langsmith>=0.2.0",
   "numpy>=1.26.0",
+  "rich>=13.0.0",
   "sentence-transformers>=3.0.0",
   "tqdm>=4.66.0",
   "wandb>=0.17.0",

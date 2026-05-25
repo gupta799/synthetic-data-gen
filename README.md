@@ -55,9 +55,15 @@ uv run synthetic-data-gen build \
   --generator-model gemma4:e2b \
   --ollama-base-url http://localhost:11434 \
   --embedding-model BAAI/bge-small-en-v1.5 \
+  --embedding-device auto \
   --wandb-project finance-router-data-gen \
   --langsmith-project finance-router-data-gen
 ```
+
+`--embedding-device auto` prefers CUDA, then MPS, then CPU. On RunPod, use
+`--embedding-device cuda` if you want the local embedding diversity checks to fail loudly unless
+CUDA is visible to PyTorch. Ollama acceleration is controlled by the Ollama server itself; on a GPU
+RunPod image, Ollama should use CUDA when the server/runtime is configured correctly.
 
 The build writes:
 
@@ -73,7 +79,8 @@ Generated data is ignored by git.
 ## Observability
 
 Local observability is always on through `generation_events.jsonl`, `summary.json`, and
-`rejected.jsonl`.
+`rejected.jsonl`. The CLI also prints colored status logs for the generator backend, embedding
+device, W&B/LangSmith status, seed counts, and final artifact paths.
 
 External observability is opt-in:
 

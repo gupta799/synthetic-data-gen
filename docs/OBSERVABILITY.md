@@ -11,12 +11,13 @@ Always written:
 - `rejected.jsonl`: rejected candidate text and rejection reason.
 - `summary.json`: final counts, distributions, rejection reasons, and embedding similarity stats.
 - `generation_config.json`: reproducible build parameters.
+- colored terminal logs: backend/device status, observability status, seed counts, and output paths.
 
 ## LangSmith
 
-When `--langsmith-project` is provided, the builder sets LangSmith tracing environment variables
-before constructing the DeepAgents/Ollama client. LangChain/DeepAgents calls are then traceable in
-LangSmith with the configured project.
+When `--langsmith-project` is provided and `LANGSMITH_API_KEY` or `LANGCHAIN_API_KEY` is set, the
+builder enables LangSmith tracing before constructing the DeepAgents/Ollama client. Without an API
+key, tracing is skipped and the local event stream records `disabled:missing_api_key`.
 
 ## Weights & Biases
 
