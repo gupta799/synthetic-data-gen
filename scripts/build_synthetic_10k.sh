@@ -7,6 +7,7 @@ EVAL_SIZE="${EVAL_SIZE:-2000}"
 GENERATOR_MODEL="${GENERATOR_MODEL:-gemma4:e2b}"
 OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
 EMBEDDING_MODEL="${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}"
+EMBEDDING_DEVICE="${EMBEDDING_DEVICE:-auto}"
 WANDB_PROJECT="${WANDB_PROJECT:-finance-router-data-gen}"
 LANGSMITH_PROJECT="${LANGSMITH_PROJECT:-finance-router-data-gen}"
 
@@ -19,5 +20,6 @@ uv run synthetic-data-gen build \
   --generator-model "${GENERATOR_MODEL}" \
   --ollama-base-url "${OLLAMA_BASE_URL}" \
   --embedding-model "${EMBEDDING_MODEL}" \
+  --embedding-device "${EMBEDDING_DEVICE}" \
   --wandb-project "${WANDB_PROJECT}" \
   --langsmith-project "${LANGSMITH_PROJECT}"

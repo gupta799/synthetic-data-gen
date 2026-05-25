@@ -45,6 +45,19 @@ uv sync --python 3.12
 ollama pull gemma4:e2b
 ```
 
+## RunPod Setup
+
+On a fresh RunPod container:
+
+```bash
+cd ~/synthetic-data-gen
+bash scripts/runpod_setup.sh
+```
+
+The setup script installs system packages, uv, Ollama, persists cache/model directories, and runs
+`uv sync`. If `/workspace` exists, it stores Ollama models and uv/Hugging Face/PyTorch caches there
+so the small root disk does not fill up.
+
 ## Build 10k Dataset
 
 ```bash
