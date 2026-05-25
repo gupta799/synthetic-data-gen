@@ -7,6 +7,48 @@ observability.
 This repo owns data generation only. The classifier repo consumes the generated JSONL files through
 the `data-gen` Git submodule.
 
+## Architecture
+
+The generator builds a finance-only prompt dataset by grounding on public finance corpora, asking a
+persona-scoped DeepAgent to produce one schema-constrained candidate at a time, then accepting only
+the candidates that pass strict validation and local Chroma diversity checks.
+
+```mermaid
+flowchart TD
+    A["Finance grounding sources<br/>FinanceBench + Sujet"] --> B["Seed loader<br/>companies, filing snippets, periods, metrics"]
+    B --> C["Quota scheduler<br/>balanced routes + seed 7"]
+    C --> D["Persona randomizer<br/>finance institution roles"]
+    D --> E["DeepAgent generation harness<br/>persona system prompt + route prompt + JSON schema"]
+
+    E --> F{"Generator backend"}
+    F -->|"RunPod GPU"| G["vLLM OpenAI-compatible API<br/>Gemma 4"]
+    F -->|"Local Apple Silicon"| H["Ollama chat API<br/>Gemma 4"]
+
+    G --> I["Schema parser and repair<br/>strict JSON candidate"]
+    H --> I
+    I --> J["Validator<br/>allowed route, finance-only prompt, complete fields"]
+
+    J --> K{"LangChain Chroma diversity store<br/>local persisted vector index"}
+    K -->|"reject: duplicate, too close, or off-route"| L["rejected.jsonl<br/>reason + raw output"]
+    K -->|"accept"| M["accepted_candidates.jsonl<br/>prompt + route + Chroma distance metadata"]
+
+    M --> N["Grouped splitter<br/>prevents train/eval seed leakage"]
+    N --> O["Final classifier files<br/>train.jsonl + eval.jsonl + summary.json"]
+
+    K -. "persists" .-> P["diversity_store/chroma/<br/>records.jsonl + summary.json"]
+    E -. "optional traces" .-> Q["LangSmith<br/>calls, retries, validator decisions"]
+    O -. "optional metrics/artifacts" .-> R["Weights & Biases<br/>counts, tables, dataset bundle"]
+    I -. "always writes" .-> S["generation_events.jsonl<br/>local event log"]
+```
+
+Acceptance is intentionally conservative:
+
+- The model backend only proposes candidates; it does not decide whether a row enters the dataset.
+- The validator enforces the finance-router schema and allowed route labels.
+- Chroma handles vector indexing and nearest-neighbor distance search on disk.
+- The repo-owned policy decides whether Chroma's nearest same-route neighbor is too close, too far
+  after the route has enough examples, or safe to accept.
+
 ## Output Schema
 
 Each generated row is compatible with `finance-router-classifier`:
