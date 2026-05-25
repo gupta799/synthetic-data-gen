@@ -15,13 +15,20 @@ from synthetic_data_gen.backends import (
     VLLM_BACKEND,
     GenerationClient,
     assert_generation_backend_available,
-    create_generation_client,
     generation_server_url,
     normalize_generator_backend,
 )
 from synthetic_data_gen.console import log_info, log_success, log_warning
-from synthetic_data_gen.embeddings import DiversityIndex, Embedder, SentenceTransformerEmbedder
+from synthetic_data_gen.diversity import LocalDiversityStore
+from synthetic_data_gen.embeddings import Embedder, SentenceTransformerEmbedder
+from synthetic_data_gen.harnesses import (
+    DEEPAGENT_HARNESS,
+    GenerationHarness,
+    create_generation_harness,
+    normalize_generation_harness,
+)
 from synthetic_data_gen.labels import LABELS
+from synthetic_data_gen.models import DiversityPolicy, GenerationRequest
 from synthetic_data_gen.observability import EventLogger, WandbLogger, configure_langsmith
 from synthetic_data_gen.parser import parse_json_objects
 from synthetic_data_gen.personas import select_persona
@@ -35,6 +42,7 @@ from synthetic_data_gen.types import (
     EmbeddingModelName,
     EventName,
     GeneratedText,
+    GenerationHarnessName,
     GeneratorBackend,
     GroupKey,
     JsonObject,
@@ -50,6 +58,7 @@ from synthetic_data_gen.types import (
     RouterExample,
     RunName,
     SeedRecord,
+    SimilarityScore,
     stable_id,
     write_jsonl,
 )
@@ -62,6 +71,7 @@ class BuildConfig:
     train_size: int = 8000
     eval_size: int = 2000
     seed: int = 7
+    generation_harness: GenerationHarnessName = DEEPAGENT_HARNESS
     generator_backend: GeneratorBackend = VLLM_BACKEND
     generator_model: ModelName = ModelName("google/gemma-4-E4B-it")
     openai_base_url: OpenAIBaseUrl = OpenAIBaseUrl("http://localhost:8000/v1")
@@ -69,8 +79,10 @@ class BuildConfig:
     ollama_base_url: OllamaBaseUrl = OllamaBaseUrl("http://localhost:11434")
     embedding_model: EmbeddingModelName = EmbeddingModelName("BAAI/bge-small-en-v1.5")
     embedding_device: EmbeddingDevice = EmbeddingDevice("auto")
-    generation_batch_size: int = 4
+    generation_batch_size: int = 1
     similarity_threshold: float = 0.88
+    min_route_similarity: float = 0.05
+    min_route_examples_for_floor: int = 25
     max_per_seed_group: int = 5
     max_sujet_rows: int | None = None
     max_attempts_multiplier: int = 12
@@ -102,10 +114,11 @@ def build_summary(
     rejected: list[RejectedCandidate],
     config: BuildConfig,
     started: float,
-    diversity: DiversityIndex,
+    diversity: LocalDiversityStore,
     leakage: MetricPayload,
 ) -> JsonObject:
     return {
+        "generation_harness": config.generation_harness,
         "generator_backend": config.generator_backend,
         "generator_model": config.generator_model,
         "model_server_url": generation_server_url(
@@ -120,6 +133,7 @@ def build_summary(
         "total_rows": len(train) + len(eval_rows),
         "candidate_rows": len(candidates),
         "rejected_rows": len(rejected),
+        "diversity_store": str(diversity.path),
         "train_routes": dict(sorted(Counter(row.route for row in train).items())),
         "eval_routes": dict(sorted(Counter(row.route for row in eval_rows).items())),
         "candidate_routes": dict(sorted(Counter(row.route for row in candidates).items())),
@@ -139,19 +153,21 @@ def build_summary(
 def build_dataset(
     config: BuildConfig,
     *,
+    harness: GenerationHarness | None = None,
     client: GenerationClient | None = None,
     embedder: Embedder | None = None,
     seeds: list[SeedRecord] | None = None,
 ) -> JsonObject:
     config = replace(
         config,
+        generation_harness=normalize_generation_harness(config.generation_harness),
         generator_backend=normalize_generator_backend(config.generator_backend),
     )
     if config.train_size % len(LABELS) != 0 or config.eval_size % len(LABELS) != 0:
         raise ValueError("train_size and eval_size must be divisible by the number of labels.")
     if config.generation_batch_size < 1:
         raise ValueError("generation_batch_size must be at least 1.")
-    if client is None and not config.skip_model_check:
+    if harness is None and client is None and not config.skip_model_check:
         assert_generation_backend_available(
             backend=config.generator_backend,
             model=config.generator_model,
@@ -173,6 +189,7 @@ def build_dataset(
         GeneratedText("Starting synthetic finance data generation"),
         {
             GeneratedText("generator_backend"): config.generator_backend,
+            GeneratedText("generation_harness"): config.generation_harness,
             GeneratedText("generator_model"): config.generator_model,
             GeneratedText("model_server_url"): generation_server_url(
                 backend=config.generator_backend,
@@ -200,16 +217,19 @@ def build_dataset(
     started = perf_counter()
     accepted_candidates_handle = None
     rejected_handle = None
+    diversity_store: LocalDiversityStore | None = None
 
     try:
-        if client is None:
-            client = create_generation_client(
+        if harness is None:
+            harness = create_generation_harness(
+                harness=config.generation_harness,
                 backend=config.generator_backend,
                 model=config.generator_model,
                 openai_base_url=config.openai_base_url,
                 openai_api_key=config.openai_api_key,
                 ollama_base_url=config.ollama_base_url,
                 temperature=config.temperature,
+                client=client,
             )
         if embedder is None:
             embedder = SentenceTransformerEmbedder(
@@ -259,7 +279,14 @@ def build_dataset(
 
         seed_group_counts: dict[GroupKey, int] = defaultdict(int)
         route_counts: Counter[RouteName] = Counter()
-        diversity = DiversityIndex(threshold=config.similarity_threshold)
+        diversity_store = LocalDiversityStore(
+            out_dir / "diversity_store",
+            DiversityPolicy(
+                max_similarity=SimilarityScore(config.similarity_threshold),
+                min_route_similarity=SimilarityScore(config.min_route_similarity),
+                min_route_examples_for_floor=config.min_route_examples_for_floor,
+            ),
+        )
         attempts = 0
 
         progress = tqdm(total=per_route_candidate_goal * len(LABELS), desc="accepted prompts")
@@ -295,7 +322,15 @@ def build_dataset(
             )
 
             try:
-                raw = client.generate(prompt)
+                request = GenerationRequest(
+                    batch_id=batch_id,
+                    prompt=prompt,
+                    route=route,
+                    persona=persona,
+                    seed=seed_record,
+                    batch_size=config.generation_batch_size,
+                )
+                raw = harness.generate(request)
                 objects = parse_json_objects(raw)
             except Exception as exc:
                 record_rejected(
@@ -342,21 +377,27 @@ def build_dataset(
                     record_rejected(result)
                     continue
                 vector = embedder.encode_one(result.text)
-                accepted_by_diversity, nearest = diversity.accept(result.route, vector)
-                if not accepted_by_diversity:
+                diversity_decision = diversity_store.evaluate(
+                    route=result.route,
+                    text=result.text,
+                    vector=vector,
+                )
+                if not diversity_decision.accepted:
                     record_rejected(
                         RejectedCandidate(
-                            reason=RejectionReason("low_diversity_embedding"),
+                            reason=diversity_decision.reason
+                            or RejectionReason("diversity_rejected"),
                             raw_text=result.text,
                             route=result.route,
                             persona=persona.name,
                             seed_group=seed_record.group_key,
-                            metadata={"nearest_similarity": nearest},
+                            metadata=diversity_decision.to_metadata(),
                         )
                     )
                     continue
 
-                result.metadata["nearest_similarity"] = nearest
+                result.metadata.update(diversity_decision.to_metadata())
+                diversity_store.commit(row=result, vector=vector, decision=diversity_decision)
                 record_accepted(result)
                 seed_group_counts[seed_record.group_key] += 1
                 route_counts[result.route] += 1
@@ -408,7 +449,7 @@ def build_dataset(
             rejected=rejected,
             config=config,
             started=started,
-            diversity=diversity,
+            diversity=diversity_store,
             leakage=leakage,
         )
         (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -419,6 +460,7 @@ def build_dataset(
                 GeneratedText("train_jsonl"): out_dir / "train.jsonl",
                 GeneratedText("eval_jsonl"): out_dir / "eval.jsonl",
                 GeneratedText("summary_json"): out_dir / "summary.json",
+                GeneratedText("diversity_store"): out_dir / "diversity_store",
                 GeneratedText("train_rows"): len(train),
                 GeneratedText("eval_rows"): len(eval_rows),
             },
@@ -435,4 +477,6 @@ def build_dataset(
             accepted_candidates_handle.close()
         if rejected_handle is not None:
             rejected_handle.close()
+        if diversity_store is not None:
+            diversity_store.close()
         event_logger.close()

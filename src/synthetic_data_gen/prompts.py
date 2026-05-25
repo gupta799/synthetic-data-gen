@@ -23,6 +23,19 @@ The generated `text` must be the prompt a real finance user would send to an ass
 ask for work, not provide the work. It should not reveal the route name.
 """)
 
+
+def build_persona_system_prompt(persona: Persona) -> PromptText:
+    return PromptText(f"""{SYSTEM_PROMPT}
+
+For this generation call, model the voice of a {persona.name} working inside a
+{persona.institution_type}. The phrasing should feel {persona.style_hint}, but the output must still
+be a user request rather than an answer.
+
+Do not use filesystem tools, shell tools, search tools, or subagents. Only return the requested
+structured generation result.
+""")
+
+
 ROUTE_INSTRUCTIONS: dict[RouteName, PromptText] = {
     RouteName("metric_extraction"): PromptText(
         "The prompt asks for a specific financial number, KPI, line item, ratio, table value, "

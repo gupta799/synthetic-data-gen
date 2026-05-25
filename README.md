@@ -34,6 +34,9 @@ Routes:
 
 - `src/synthetic_data_gen/types/`: domain types, JSON payload types, records, and text helpers.
 - `src/synthetic_data_gen/backends/`: clean vLLM and Ollama backend boundaries.
+- `src/synthetic_data_gen/harnesses/`: DeepAgent generation harness and direct schema smoke harness.
+- `src/synthetic_data_gen/models/`: typed request, diversity policy, and store records.
+- `src/synthetic_data_gen/diversity/`: local on-disk embedding store and acceptance policy.
 - `src/synthetic_data_gen/generation_schema.py`: JSON schema passed to the model server.
 - `src/synthetic_data_gen/prompts.py`: baked generation prompt templates.
 - `src/synthetic_data_gen/validation.py`: strict conversion from model JSON to classifier rows.
@@ -86,6 +89,7 @@ uv run synthetic-data-gen build \
   --out data/smoke-ollama \
   --train-size 50 \
   --eval-size 25 \
+  --generation-harness direct \
   --generator-backend ollama \
   --generator-model gemma4:e4b \
   --ollama-base-url http://localhost:11434 \
@@ -99,6 +103,7 @@ uv run synthetic-data-gen build \
   --out data/synthetic-10k \
   --train-size 8000 \
   --eval-size 2000 \
+  --generation-harness deepagent \
   --generator-backend vllm \
   --generator-model google/gemma-4-E4B-it \
   --vllm-base-url http://localhost:8000/v1 \
@@ -123,16 +128,24 @@ The build writes:
 - `accepted_candidates.jsonl`
 - `generation_config.json`
 - `generation_events.jsonl`
+- `diversity_store/records.jsonl`
+- `diversity_store/vectors.npz`
+- `diversity_store/summary.json`
 
 Generated data is ignored by git.
 
 ## Observability
 
 Local observability is always on through `generation_events.jsonl`, `summary.json`,
-`accepted_candidates.jsonl`, and `rejected.jsonl`. Accepted and rejected candidates are flushed as
-the build runs, so you can inspect progress before the final train/eval split exists. The CLI also
-prints colored status logs for the generator backend, embedding device, W&B/LangSmith status, seed
-counts, and final artifact paths.
+`accepted_candidates.jsonl`, `rejected.jsonl`, and the local `diversity_store/`. Accepted and
+rejected candidates are flushed as the build runs, so you can inspect progress before the final
+train/eval split exists. The CLI also prints colored status logs for the generation harness,
+generator backend, embedding device, W&B/LangSmith status, seed counts, and final artifact paths.
+
+The default generation path is `--generation-harness deepagent`. It creates persona-scoped
+DeepAgents, so the seeded persona randomizer changes the system prompt used to generate each
+candidate. Use `--generation-harness direct` for quick smoke tests when you only want a raw schema
+call to the backend.
 
 External observability is opt-in:
 
@@ -148,6 +161,7 @@ uv run synthetic-data-gen build \
   --train-size 50 \
   --eval-size 25 \
   --out data/smoke \
+  --generation-harness deepagent \
   --generator-backend vllm \
   --generator-model google/gemma-4-E4B-it \
   --vllm-base-url http://localhost:8000/v1

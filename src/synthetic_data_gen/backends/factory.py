@@ -66,6 +66,36 @@ def create_generation_client(
     )
 
 
+def create_langchain_chat_model(
+    *,
+    backend: GeneratorBackend,
+    model: ModelName,
+    openai_base_url: OpenAIBaseUrl,
+    openai_api_key: OpenAIApiKey,
+    ollama_base_url: OllamaBaseUrl,
+    temperature: float,
+) -> object:
+    from langchain_openai import ChatOpenAI
+
+    normalized_backend = normalize_generator_backend(backend)
+    base_url = (
+        OpenAIBaseUrl(f"{ollama_base_url.rstrip('/')}/v1")
+        if normalized_backend == OLLAMA_BACKEND
+        else openai_base_url
+    )
+    api_key = OpenAIApiKey("ollama") if normalized_backend == OLLAMA_BACKEND else openai_api_key
+    return ChatOpenAI(
+        model=str(model),
+        base_url=str(base_url),
+        api_key=str(api_key),
+        temperature=temperature,
+        timeout=180.0,
+        max_retries=1,
+        max_completion_tokens=4096,
+        disabled_params={"parallel_tool_calls": None},
+    )
+
+
 def assert_generation_backend_available(
     *,
     backend: GeneratorBackend,

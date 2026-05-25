@@ -1,8 +1,7 @@
-"""Embedding-based diversity gates."""
+"""Embedding model adapters."""
 
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import Protocol
 
 import numpy as np
@@ -11,8 +10,6 @@ from synthetic_data_gen.types import (
     EmbeddingDevice,
     EmbeddingModelName,
     GeneratedText,
-    MetricPayload,
-    RouteName,
 )
 
 SUPPORTED_EMBEDDING_DEVICES: tuple[EmbeddingDevice, ...] = (
@@ -43,41 +40,6 @@ class SentenceTransformerEmbedder:
     def encode_one(self, text: GeneratedText) -> np.ndarray:
         vector = self._model.encode([text], normalize_embeddings=True)[0]
         return np.asarray(vector, dtype=np.float32)
-
-
-class DiversityIndex:
-    def __init__(self, threshold: float = 0.88) -> None:
-        self.threshold = threshold
-        self._vectors: dict[RouteName, list[np.ndarray]] = defaultdict(list)
-        self.max_seen_similarity: list[float] = []
-
-    def nearest_similarity(self, route: RouteName, vector: np.ndarray) -> float:
-        vectors = self._vectors.get(route) or []
-        if not vectors:
-            return 0.0
-        matrix = np.vstack(vectors)
-        similarities = matrix @ vector
-        return float(np.max(similarities))
-
-    def accept(self, route: RouteName, vector: np.ndarray) -> tuple[bool, float]:
-        nearest = self.nearest_similarity(route, vector)
-        self.max_seen_similarity.append(nearest)
-        if nearest >= self.threshold:
-            return False, nearest
-        self._vectors[route].append(vector)
-        return True, nearest
-
-    @property
-    def similarity_stats(self) -> MetricPayload:
-        if not self.max_seen_similarity:
-            return {"count": 0, "max": 0.0, "mean": 0.0, "p95": 0.0}
-        values = np.asarray(self.max_seen_similarity, dtype=np.float32)
-        return {
-            "count": float(len(values)),
-            "max": float(np.max(values)),
-            "mean": float(np.mean(values)),
-            "p95": float(np.quantile(values, 0.95)),
-        }
 
 
 class StaticEmbedder:

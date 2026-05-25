@@ -10,10 +10,12 @@ from pathlib import Path
 
 from synthetic_data_gen.backends import VLLM_BACKEND, openai_api_key_from_env
 from synthetic_data_gen.builder import BuildConfig, build_dataset
+from synthetic_data_gen.harnesses import DEEPAGENT_HARNESS
 from synthetic_data_gen.types import (
     CliArg,
     EmbeddingDevice,
     EmbeddingModelName,
+    GenerationHarnessName,
     GeneratorBackend,
     JsonObject,
     ModelName,
@@ -35,6 +37,7 @@ def cmd_build(args: argparse.Namespace) -> None:
         train_size=args.train_size,
         eval_size=args.eval_size,
         seed=args.seed,
+        generation_harness=GenerationHarnessName(args.generation_harness),
         generator_backend=GeneratorBackend(args.generator_backend),
         generator_model=ModelName(args.generator_model),
         openai_base_url=OpenAIBaseUrl(args.openai_base_url),
@@ -73,6 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--train-size", type=int, default=8000)
     build.add_argument("--eval-size", type=int, default=2000)
     build.add_argument("--seed", type=int, default=7)
+    build.add_argument(
+        "--generation-harness",
+        choices=("deepagent", "direct"),
+        default=DEEPAGENT_HARNESS,
+        help="Use DeepAgents for generation or direct schema calls for smoke tests.",
+    )
     build.add_argument("--generator-backend", choices=("vllm", "ollama"), default=VLLM_BACKEND)
     build.add_argument("--generator-model", default="google/gemma-4-E4B-it")
     build.add_argument(
@@ -97,7 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("auto", "cpu", "cuda", "mps"),
         help="Device for local embedding diversity checks. Auto prefers CUDA, then MPS, then CPU.",
     )
-    build.add_argument("--generation-batch-size", type=int, default=4)
+    build.add_argument("--generation-batch-size", type=int, default=1)
     build.add_argument("--similarity-threshold", type=float, default=0.88)
     build.add_argument("--max-per-seed-group", type=int, default=5)
     build.add_argument("--max-sujet-rows", type=int)

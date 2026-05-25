@@ -12,6 +12,7 @@ Always written:
 - `rejected.jsonl`: rejected candidate text and rejection reason.
 - `summary.json`: final counts, distributions, rejection reasons, and embedding similarity stats.
 - `generation_config.json`: reproducible build parameters.
+- `diversity_store/`: accepted prompt records, route vectors, and diversity-store summary.
 - colored terminal logs: backend/device status, observability status, seed counts, and output paths.
 
 ## LangSmith

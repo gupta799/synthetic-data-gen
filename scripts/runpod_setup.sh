@@ -137,7 +137,7 @@ print_next_steps() {
   printf '\n'
   printf 'Then, in another terminal:\n'
   printf '  cd %s\n' "${REPO_DIR}"
-  printf '  uv run synthetic-data-gen build --out %s/synthetic-10k --train-size 8000 --eval-size 2000 --generator-backend vllm --generator-model google/gemma-4-E4B-it --vllm-base-url http://localhost:8000/v1 --embedding-model BAAI/bge-small-en-v1.5 --embedding-device cuda --wandb-project finance-router-data-gen\n' "${OUTPUT_ROOT}"
+  printf '  uv run synthetic-data-gen build --out %s/synthetic-10k --train-size 8000 --eval-size 2000 --generation-harness deepagent --generator-backend vllm --generator-model google/gemma-4-E4B-it --vllm-base-url http://localhost:8000/v1 --embedding-model BAAI/bge-small-en-v1.5 --embedding-device cuda --wandb-project finance-router-data-gen\n' "${OUTPUT_ROOT}"
 }
 
 mkdir -p "${UV_CACHE_DIR}" "${HF_HOME}" "${TORCH_HOME}" "${PIP_CACHE_DIR}" "${OLLAMA_MODELS}"

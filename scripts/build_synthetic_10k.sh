@@ -4,6 +4,7 @@ set -euo pipefail
 OUT="${OUT:-data/synthetic-10k}"
 TRAIN_SIZE="${TRAIN_SIZE:-8000}"
 EVAL_SIZE="${EVAL_SIZE:-2000}"
+GENERATION_HARNESS="${GENERATION_HARNESS:-deepagent}"
 GENERATOR_BACKEND="${GENERATOR_BACKEND:-vllm}"
 GENERATOR_MODEL="${GENERATOR_MODEL:-google/gemma-4-E4B-it}"
 OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://localhost:8000/v1}"
@@ -19,6 +20,7 @@ uv run synthetic-data-gen build \
   --out "${OUT}" \
   --train-size "${TRAIN_SIZE}" \
   --eval-size "${EVAL_SIZE}" \
+  --generation-harness "${GENERATION_HARNESS}" \
   --generator-backend "${GENERATOR_BACKEND}" \
   --generator-model "${GENERATOR_MODEL}" \
   --vllm-base-url "${OPENAI_BASE_URL}" \

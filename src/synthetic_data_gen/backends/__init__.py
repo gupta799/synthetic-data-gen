@@ -6,6 +6,7 @@ from synthetic_data_gen.backends.factory import (
     VLLM_BACKEND,
     assert_generation_backend_available,
     create_generation_client,
+    create_langchain_chat_model,
     generation_server_url,
     normalize_generator_backend,
 )
@@ -17,6 +18,7 @@ __all__ = [
     "VLLM_BACKEND",
     "assert_generation_backend_available",
     "create_generation_client",
+    "create_langchain_chat_model",
     "generation_server_url",
     "normalize_generator_backend",
     "openai_api_key_from_env",
