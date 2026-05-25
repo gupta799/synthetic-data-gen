@@ -38,6 +38,7 @@ from synthetic_data_gen.splitting import split_exact_by_route, validate_exact_sp
 from synthetic_data_gen.types import (
     ArtifactName,
     ArtifactType,
+    DistanceScore,
     EmbeddingDevice,
     EmbeddingModelName,
     EventName,
@@ -58,7 +59,6 @@ from synthetic_data_gen.types import (
     RouterExample,
     RunName,
     SeedRecord,
-    SimilarityScore,
     stable_id,
     write_jsonl,
 )
@@ -80,8 +80,8 @@ class BuildConfig:
     embedding_model: EmbeddingModelName = EmbeddingModelName("BAAI/bge-small-en-v1.5")
     embedding_device: EmbeddingDevice = EmbeddingDevice("auto")
     generation_batch_size: int = 1
-    similarity_threshold: float = 0.88
-    min_route_similarity: float = 0.05
+    min_neighbor_distance: float = 0.08
+    max_neighbor_distance: float = 0.65
     min_route_examples_for_floor: int = 25
     max_per_seed_group: int = 5
     max_sujet_rows: int | None = None
@@ -144,7 +144,7 @@ def build_summary(
             sorted(Counter(row.metadata.get("seed_source") for row in candidates).items())
         ),
         "rejection_reasons": dict(sorted(Counter(row.reason for row in rejected).items())),
-        "embedding_similarity": diversity.similarity_stats,
+        "diversity_scores": diversity.diversity_stats,
         "elapsed_seconds": perf_counter() - started,
         **leakage,
     }
@@ -282,10 +282,11 @@ def build_dataset(
         diversity_store = LocalDiversityStore(
             out_dir / "diversity_store",
             DiversityPolicy(
-                max_similarity=SimilarityScore(config.similarity_threshold),
-                min_route_similarity=SimilarityScore(config.min_route_similarity),
+                min_neighbor_distance=DistanceScore(config.min_neighbor_distance),
+                max_neighbor_distance=DistanceScore(config.max_neighbor_distance),
                 min_route_examples_for_floor=config.min_route_examples_for_floor,
             ),
+            embedder,
         )
         attempts = 0
 
@@ -376,11 +377,9 @@ def build_dataset(
                 if isinstance(result, RejectedCandidate):
                     record_rejected(result)
                     continue
-                vector = embedder.encode_one(result.text)
                 diversity_decision = diversity_store.evaluate(
                     route=result.route,
                     text=result.text,
-                    vector=vector,
                 )
                 if not diversity_decision.accepted:
                     record_rejected(
@@ -397,7 +396,7 @@ def build_dataset(
                     continue
 
                 result.metadata.update(diversity_decision.to_metadata())
-                diversity_store.commit(row=result, vector=vector, decision=diversity_decision)
+                diversity_store.commit(row=result, decision=diversity_decision)
                 record_accepted(result)
                 seed_group_counts[seed_record.group_key] += 1
                 route_counts[result.route] += 1

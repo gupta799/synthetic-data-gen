@@ -48,7 +48,8 @@ def cmd_build(args: argparse.Namespace) -> None:
         embedding_model=EmbeddingModelName(args.embedding_model),
         embedding_device=EmbeddingDevice(args.embedding_device),
         generation_batch_size=args.generation_batch_size,
-        similarity_threshold=args.similarity_threshold,
+        min_neighbor_distance=args.min_neighbor_distance,
+        max_neighbor_distance=args.max_neighbor_distance,
         max_per_seed_group=args.max_per_seed_group,
         max_sujet_rows=args.max_sujet_rows,
         max_attempts_multiplier=args.max_attempts_multiplier,
@@ -107,7 +108,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Device for local embedding diversity checks. Auto prefers CUDA, then MPS, then CPU.",
     )
     build.add_argument("--generation-batch-size", type=int, default=1)
-    build.add_argument("--similarity-threshold", type=float, default=0.88)
+    build.add_argument(
+        "--min-neighbor-distance",
+        type=float,
+        default=0.08,
+        help="Chroma cosine distance at or below this value is rejected as too similar.",
+    )
+    build.add_argument(
+        "--max-neighbor-distance",
+        type=float,
+        default=0.65,
+        help="After enough route examples, Chroma cosine distance above this is rejected.",
+    )
     build.add_argument("--max-per-seed-group", type=int, default=5)
     build.add_argument("--max-sujet-rows", type=int)
     build.add_argument("--max-attempts-multiplier", type=int, default=12)

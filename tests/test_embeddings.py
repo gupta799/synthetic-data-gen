@@ -7,25 +7,30 @@ from synthetic_data_gen.diversity import LocalDiversityStore
 from synthetic_data_gen.embeddings import resolve_embedding_device
 from synthetic_data_gen.models import DiversityPolicy
 from synthetic_data_gen.types import (
+    DistanceScore,
     EmbeddingDevice,
     GeneratedText,
     RejectionReason,
     RouteName,
-    SimilarityScore,
 )
+
+
+class ConstantEmbedder:
+    def encode_one(self, text: GeneratedText) -> np.ndarray:
+        return np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
 
 
 def test_local_diversity_store_rejects_low_diversity_vector(tmp_path) -> None:
     store = LocalDiversityStore(
         tmp_path / "store",
-        DiversityPolicy(max_similarity=SimilarityScore(0.9)),
+        DiversityPolicy(min_neighbor_distance=DistanceScore(0.9)),
+        ConstantEmbedder(),
     )
-    vector = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
     route = RouteName("metric_extraction")
 
-    first = store.evaluate(route=route, text=GeneratedText("first prompt"), vector=vector)
+    first = store.evaluate(route=route, text=GeneratedText("first prompt"))
     assert first.accepted is True
-    assert first.nearest_similarity == 0.0
+    assert first.nearest_distance == 1.0
 
     from synthetic_data_gen.types import RouterExample, SourceName
 
@@ -35,14 +40,13 @@ def test_local_diversity_store_rejects_low_diversity_vector(tmp_path) -> None:
             route=route,
             source=SourceName("unit"),
         ),
-        vector=vector,
         decision=first,
     )
-    second = store.evaluate(route=route, text=GeneratedText("second prompt"), vector=vector)
+    second = store.evaluate(route=route, text=GeneratedText("first prompt, please"))
 
     assert second.accepted is False
     assert second.reason == RejectionReason("low_diversity_embedding")
-    assert second.nearest_similarity == 1.0
+    assert second.nearest_distance == 0.0
     store.close()
 
 

@@ -36,7 +36,7 @@ Routes:
 - `src/synthetic_data_gen/backends/`: clean vLLM and Ollama backend boundaries.
 - `src/synthetic_data_gen/harnesses/`: DeepAgent generation harness and direct schema smoke harness.
 - `src/synthetic_data_gen/models/`: typed request, diversity policy, and store records.
-- `src/synthetic_data_gen/diversity/`: local on-disk embedding store and acceptance policy.
+- `src/synthetic_data_gen/diversity/`: LangChain/Chroma local vector store and acceptance policy.
 - `src/synthetic_data_gen/generation_schema.py`: JSON schema passed to the model server.
 - `src/synthetic_data_gen/prompts.py`: baked generation prompt templates.
 - `src/synthetic_data_gen/validation.py`: strict conversion from model JSON to classifier rows.
@@ -129,7 +129,7 @@ The build writes:
 - `generation_config.json`
 - `generation_events.jsonl`
 - `diversity_store/records.jsonl`
-- `diversity_store/vectors.npz`
+- `diversity_store/chroma/`
 - `diversity_store/summary.json`
 
 Generated data is ignored by git.
@@ -141,6 +141,9 @@ Local observability is always on through `generation_events.jsonl`, `summary.jso
 rejected candidates are flushed as the build runs, so you can inspect progress before the final
 train/eval split exists. The CLI also prints colored status logs for the generation harness,
 generator backend, embedding device, W&B/LangSmith status, seed counts, and final artifact paths.
+
+The diversity store uses LangChain's Chroma integration on disk. Chroma owns the vector indexing and
+nearest-neighbor distance search; this repo only owns the typed accept/reject policy.
 
 The default generation path is `--generation-harness deepagent`. It creates persona-scoped
 DeepAgents, so the seeded persona randomizer changes the system prompt used to generate each

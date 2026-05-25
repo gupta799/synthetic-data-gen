@@ -28,10 +28,15 @@ The builder does not know the details of either harness.
 
 ## Diversity Store
 
-The local diversity store persists accepted prompt records to `diversity_store/records.jsonl` and
-embedding matrices to `diversity_store/vectors.npz`. It rejects exact prompt duplicates and prompts
-whose nearest same-route embedding is too similar. After enough examples exist for a route, it can
-also reject prompts that are too far from that route's centroid.
+The local diversity store is backed by LangChain's Chroma vector store. It persists accepted prompt
+records to `diversity_store/records.jsonl` and the Chroma index to `diversity_store/chroma/`.
+Chroma owns vector indexing and nearest-neighbor distance search. This repo only owns the typed
+accept/reject policy:
+
+- reject exact prompt duplicates
+- reject prompts whose nearest same-route neighbor is too close
+- after enough examples exist for a route, reject prompts whose nearest same-route neighbor is too
+  far away
 
 ## Why Grouped Splits
 

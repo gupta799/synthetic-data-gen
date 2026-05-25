@@ -10,9 +10,9 @@ Always written:
 - `generation_events.jsonl`: append-only event stream for batches, rejects, and completion.
 - `accepted_candidates.jsonl`: accepted candidates as soon as they pass validation and diversity.
 - `rejected.jsonl`: rejected candidate text and rejection reason.
-- `summary.json`: final counts, distributions, rejection reasons, and embedding similarity stats.
+- `summary.json`: final counts, distributions, rejection reasons, and Chroma distance stats.
 - `generation_config.json`: reproducible build parameters.
-- `diversity_store/`: accepted prompt records, route vectors, and diversity-store summary.
+- `diversity_store/`: accepted prompt records, local Chroma index, and diversity-store summary.
 - colored terminal logs: backend/device status, observability status, seed counts, and output paths.
 
 ## LangSmith
