@@ -133,8 +133,13 @@ def build_dataset(
 
     out_dir = config.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    configure_langsmith(config.langsmith_project)
+    langsmith_status = configure_langsmith(config.langsmith_project)
     event_logger = EventLogger(out_dir / "generation_events.jsonl")
+    event_logger.log(
+        EventName("observability_configured"),
+        langsmith_status=langsmith_status,
+        wandb_enabled=bool(config.wandb_project),
+    )
     wandb_logger = WandbLogger(
         project=config.wandb_project,
         run_name=config.wandb_run_name,

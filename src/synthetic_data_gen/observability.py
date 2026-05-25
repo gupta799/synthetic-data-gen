@@ -13,6 +13,7 @@ from synthetic_data_gen.types import (
     ArtifactName,
     ArtifactType,
     EventName,
+    GeneratedText,
     JsonObject,
     MetricPayload,
     ProjectName,
@@ -90,10 +91,19 @@ class WandbLogger:
         self.run.finish()
 
 
-def configure_langsmith(project: ProjectName | None) -> None:
+def has_langsmith_api_key() -> bool:
+    return bool(os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY"))
+
+
+def configure_langsmith(project: ProjectName | None) -> GeneratedText:
     if not project:
-        return
+        return GeneratedText("disabled:no_project")
+    if not has_langsmith_api_key():
+        os.environ["LANGSMITH_TRACING"] = "false"
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        return GeneratedText("disabled:missing_api_key")
     os.environ.setdefault("LANGSMITH_TRACING", "true")
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
     os.environ.setdefault("LANGSMITH_PROJECT", project)
     os.environ.setdefault("LANGCHAIN_PROJECT", project)
+    return GeneratedText("enabled")
