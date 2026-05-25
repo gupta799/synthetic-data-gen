@@ -128,6 +128,8 @@ def build_dataset(
         raise ValueError("train_size and eval_size must be divisible by the number of labels.")
     if config.generation_batch_size < 1:
         raise ValueError("generation_batch_size must be at least 1.")
+    if client is None and not config.skip_model_check:
+        assert_ollama_model_available(config.generator_model, config.ollama_base_url)
 
     out_dir = config.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -142,8 +144,6 @@ def build_dataset(
 
     try:
         if client is None:
-            if not config.skip_model_check:
-                assert_ollama_model_available(config.generator_model, config.ollama_base_url)
             client = DeepAgentOllamaClient(
                 model=config.generator_model,
                 base_url=config.ollama_base_url,
