@@ -5,32 +5,86 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
+from synthetic_data_gen.types import InstitutionType, PersonaName, StyleHint
+
 
 @dataclass(frozen=True)
 class Persona:
-    name: str
-    institution_type: str
-    style_hint: str
+    name: PersonaName
+    institution_type: InstitutionType
+    style_hint: StyleHint
 
 
 PERSONAS: tuple[Persona, ...] = (
-    Persona("equity research analyst", "sell-side research", "concise, company-specific"),
-    Persona("investment banking associate", "investment bank", "deal-oriented and precise"),
-    Persona("hedge fund analyst", "hedge fund", "skeptical, catalyst-focused"),
-    Persona("private equity associate", "private equity firm", "diligence-focused"),
-    Persona("credit analyst", "credit fund", "risk and leverage focused"),
-    Persona("corporate FP&A manager", "corporate finance team", "operational and budget-aware"),
-    Persona("CFO office analyst", "CFO office", "executive-ready and metric-driven"),
-    Persona("auditor", "audit firm", "evidence-oriented and control-aware"),
-    Persona("risk officer", "financial risk function", "risk and exposure focused"),
-    Persona("rating agency analyst", "rating agency", "debt capacity and outlook focused"),
-    Persona("regulator/examiner", "financial regulator", "compliance and disclosure focused"),
-    Persona("portfolio manager", "asset manager", "allocation and performance focused"),
-    Persona("quant researcher", "quant fund", "factor and time-series aware"),
     Persona(
-        "investor relations analyst",
-        "investor relations team",
-        "shareholder-communication aware",
+        PersonaName("equity research analyst"),
+        InstitutionType("sell-side research"),
+        StyleHint("concise, company-specific"),
+    ),
+    Persona(
+        PersonaName("investment banking associate"),
+        InstitutionType("investment bank"),
+        StyleHint("deal-oriented and precise"),
+    ),
+    Persona(
+        PersonaName("hedge fund analyst"),
+        InstitutionType("hedge fund"),
+        StyleHint("skeptical, catalyst-focused"),
+    ),
+    Persona(
+        PersonaName("private equity associate"),
+        InstitutionType("private equity firm"),
+        StyleHint("diligence-focused"),
+    ),
+    Persona(
+        PersonaName("credit analyst"),
+        InstitutionType("credit fund"),
+        StyleHint("risk and leverage focused"),
+    ),
+    Persona(
+        PersonaName("corporate FP&A manager"),
+        InstitutionType("corporate finance team"),
+        StyleHint("operational and budget-aware"),
+    ),
+    Persona(
+        PersonaName("CFO office analyst"),
+        InstitutionType("CFO office"),
+        StyleHint("executive-ready and metric-driven"),
+    ),
+    Persona(
+        PersonaName("auditor"),
+        InstitutionType("audit firm"),
+        StyleHint("evidence-oriented and control-aware"),
+    ),
+    Persona(
+        PersonaName("risk officer"),
+        InstitutionType("financial risk function"),
+        StyleHint("risk and exposure focused"),
+    ),
+    Persona(
+        PersonaName("rating agency analyst"),
+        InstitutionType("rating agency"),
+        StyleHint("debt capacity and outlook focused"),
+    ),
+    Persona(
+        PersonaName("regulator/examiner"),
+        InstitutionType("financial regulator"),
+        StyleHint("compliance and disclosure focused"),
+    ),
+    Persona(
+        PersonaName("portfolio manager"),
+        InstitutionType("asset manager"),
+        StyleHint("allocation and performance focused"),
+    ),
+    Persona(
+        PersonaName("quant researcher"),
+        InstitutionType("quant fund"),
+        StyleHint("factor and time-series aware"),
+    ),
+    Persona(
+        PersonaName("investor relations analyst"),
+        InstitutionType("investor relations team"),
+        StyleHint("shareholder-communication aware"),
     ),
 )
 

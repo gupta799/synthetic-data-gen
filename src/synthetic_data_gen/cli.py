@@ -5,33 +5,43 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from typing import Any
+from collections.abc import Sequence
+from pathlib import Path
 
 from synthetic_data_gen.builder import BuildConfig, build_dataset
+from synthetic_data_gen.types import (
+    CliArg,
+    EmbeddingModelName,
+    JsonObject,
+    ModelName,
+    OllamaBaseUrl,
+    ProjectName,
+    RunName,
+)
 
 
-def print_json(payload: dict[str, Any]) -> None:
+def print_json(payload: JsonObject) -> None:
     print(json.dumps(payload, indent=2))
 
 
 def cmd_build(args: argparse.Namespace) -> None:
     config = BuildConfig(
-        out_dir=args.out,
+        out_dir=Path(args.out),
         train_size=args.train_size,
         eval_size=args.eval_size,
         seed=args.seed,
-        generator_model=args.generator_model,
-        ollama_base_url=args.ollama_base_url,
-        embedding_model=args.embedding_model,
+        generator_model=ModelName(args.generator_model),
+        ollama_base_url=OllamaBaseUrl(args.ollama_base_url),
+        embedding_model=EmbeddingModelName(args.embedding_model),
         generation_batch_size=args.generation_batch_size,
         similarity_threshold=args.similarity_threshold,
         max_per_seed_group=args.max_per_seed_group,
         max_sujet_rows=args.max_sujet_rows,
         max_attempts_multiplier=args.max_attempts_multiplier,
         temperature=args.temperature,
-        wandb_project=args.wandb_project,
-        wandb_run_name=args.wandb_run_name,
-        langsmith_project=args.langsmith_project,
+        wandb_project=ProjectName(args.wandb_project) if args.wandb_project else None,
+        wandb_run_name=RunName(args.wandb_run_name) if args.wandb_run_name else None,
+        langsmith_project=ProjectName(args.langsmith_project) if args.langsmith_project else None,
         skip_model_check=args.skip_model_check,
     )
     print_json(build_dataset(config))
@@ -72,9 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: Sequence[CliArg] | None = None) -> None:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args([str(arg) for arg in argv] if argv is not None else None)
     args.func(args)
 
 

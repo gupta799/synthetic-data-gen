@@ -3,23 +3,30 @@ from __future__ import annotations
 from collections import Counter
 
 from synthetic_data_gen.labels import LABELS
-from synthetic_data_gen.schema import RouterExample
 from synthetic_data_gen.splitting import split_exact_by_route, validate_exact_splits
+from synthetic_data_gen.types import (
+    CompanyName,
+    GeneratedText,
+    GroupKey,
+    RouteName,
+    RouterExample,
+    SourceName,
+)
 
 
-def make_example(route: str, group: str, index: int) -> RouterExample:
+def make_example(route: RouteName, group: GroupKey, index: int) -> RouterExample:
     return RouterExample(
-        text=f"Finance prompt {route} {group} {index}",
+        text=GeneratedText(f"Finance prompt {route} {group} {index}"),
         route=route,
-        source="unit",
-        company="Example Inc",
+        source=SourceName("unit"),
+        company=CompanyName("Example Inc"),
         metadata={"group_key": group},
     )
 
 
 def test_split_exact_by_route_has_counts_and_no_leakage() -> None:
     rows = [
-        make_example(route, f"group:{route}:{group_index}", row_index)
+        make_example(route, GroupKey(f"group:{route}:{group_index}"), row_index)
         for route in LABELS
         for group_index in range(6)
         for row_index in range(2)

@@ -8,10 +8,19 @@ from collections import Counter
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+
+from synthetic_data_gen.types import (
+    ArtifactName,
+    ArtifactType,
+    EventName,
+    JsonObject,
+    MetricPayload,
+    ProjectName,
+    RunName,
+)
 
 
-def jsonable(value: Any) -> Any:
+def jsonable(value: object) -> object:
     if is_dataclass(value):
         return asdict(value)
     if isinstance(value, Path):
@@ -28,7 +37,7 @@ class EventLogger:
         self._started = perf_counter()
         self._handle = self.path.open("w", encoding="utf-8")
 
-    def log(self, event: str, **payload: Any) -> None:
+    def log(self, event: EventName, **payload: object) -> None:
         row = {
             "event": event,
             "elapsed_seconds": perf_counter() - self._started,
@@ -45,9 +54,9 @@ class WandbLogger:
     def __init__(
         self,
         *,
-        project: str | None,
-        run_name: str | None,
-        config: dict[str, Any],
+        project: ProjectName | None,
+        run_name: RunName | None,
+        config: JsonObject,
     ) -> None:
         self.run = None
         if not project:
@@ -62,18 +71,18 @@ class WandbLogger:
             config=config,
         )
 
-    def log(self, payload: dict[str, Any], step: int | None = None) -> None:
+    def log(self, payload: MetricPayload, step: int | None = None) -> None:
         if self.run is not None:
             self.run.log(payload, step=step)
 
-    def log_artifact(self, name: str, artifact_type: str, path: Path) -> None:
+    def log_artifact(self, name: ArtifactName, artifact_type: ArtifactType, path: Path) -> None:
         if self.run is None:
             return
         artifact = self._wandb.Artifact(name=name, type=artifact_type)
         artifact.add_dir(str(path))
         self.run.log_artifact(artifact)
 
-    def finish(self, summary: dict[str, Any] | None = None) -> None:
+    def finish(self, summary: JsonObject | None = None) -> None:
         if self.run is None:
             return
         for key, value in (summary or {}).items():
@@ -81,7 +90,7 @@ class WandbLogger:
         self.run.finish()
 
 
-def configure_langsmith(project: str | None) -> None:
+def configure_langsmith(project: ProjectName | None) -> None:
     if not project:
         return
     os.environ.setdefault("LANGSMITH_TRACING", "true")

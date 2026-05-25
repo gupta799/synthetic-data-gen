@@ -1,15 +1,26 @@
 from __future__ import annotations
 
-from synthetic_data_gen.schema import RejectedCandidate, SeedRecord
+from synthetic_data_gen.types import (
+    BatchId,
+    CompanyName,
+    EmbeddingModelName,
+    GeneratedText,
+    GroupKey,
+    ModelName,
+    RejectedCandidate,
+    RouteName,
+    SeedRecord,
+    SourceName,
+)
 from synthetic_data_gen.validation import validate_generated_object
 
 
 def seed() -> SeedRecord:
     return SeedRecord(
-        source="unit",
-        group_key="unit:apple:2023",
-        context="Apple annual report revenue and margin context.",
-        company="Apple Inc",
+        source=SourceName("unit"),
+        group_key=GroupKey("unit:apple:2023"),
+        context=GeneratedText("Apple annual report revenue and margin context."),
+        company=CompanyName("Apple Inc"),
     )
 
 
@@ -23,11 +34,11 @@ def test_validate_generated_object_returns_classifier_schema() -> None:
             "institution_type": "sell-side research",
             "metadata": {},
         },
-        expected_route="metric_extraction",
+        expected_route=RouteName("metric_extraction"),
         seed=seed(),
-        generator_model="gemma4:e2b",
-        embedding_model="BAAI/bge-small-en-v1.5",
-        generation_batch_id="batch-1",
+        generator_model=ModelName("gemma4:e2b"),
+        embedding_model=EmbeddingModelName("BAAI/bge-small-en-v1.5"),
+        generation_batch_id=BatchId("batch-1"),
     )
 
     assert not isinstance(row, RejectedCandidate)
@@ -46,11 +57,11 @@ def test_validate_generated_object_rejects_route_leakage() -> None:
             "institution_type": "sell-side research",
             "metadata": {},
         },
-        expected_route="metric_extraction",
+        expected_route=RouteName("metric_extraction"),
         seed=seed(),
-        generator_model="gemma4:e2b",
-        embedding_model="BAAI/bge-small-en-v1.5",
-        generation_batch_id="batch-1",
+        generator_model=ModelName("gemma4:e2b"),
+        embedding_model=EmbeddingModelName("BAAI/bge-small-en-v1.5"),
+        generation_batch_id=BatchId("batch-1"),
     )
 
     assert isinstance(row, RejectedCandidate)

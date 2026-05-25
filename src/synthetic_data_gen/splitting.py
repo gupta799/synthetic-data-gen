@@ -7,7 +7,7 @@ from collections import Counter, defaultdict
 from collections.abc import Sequence
 
 from synthetic_data_gen.labels import LABELS
-from synthetic_data_gen.schema import RouterExample
+from synthetic_data_gen.types import GroupKey, MetricPayload, RouteName, RouterExample
 
 
 def split_exact_by_route(
@@ -24,15 +24,15 @@ def split_exact_by_route(
     eval_quota = eval_size // len(LABELS)
     rng = random.Random(seed)
 
-    by_route: dict[str, list[RouterExample]] = defaultdict(list)
+    by_route: dict[RouteName, list[RouterExample]] = defaultdict(list)
     for row in rows:
         by_route[row.route].append(row)
     for route_rows in by_route.values():
         route_rows.sort(key=lambda row: row.id or "")
         rng.shuffle(route_rows)
 
-    eval_groups: set[str] = set()
-    train_groups: set[str] = set()
+    eval_groups: set[GroupKey] = set()
+    train_groups: set[GroupKey] = set()
     eval_rows: list[RouterExample] = []
     train_rows: list[RouterExample] = []
 
@@ -77,7 +77,7 @@ def validate_exact_splits(
     eval_rows: Sequence[RouterExample],
     train_size: int,
     eval_size: int,
-) -> dict[str, int]:
+) -> MetricPayload:
     expected_train = train_size // len(LABELS)
     expected_eval = eval_size // len(LABELS)
     if len(train) != train_size:

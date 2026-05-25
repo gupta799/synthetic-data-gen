@@ -9,19 +9,20 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from synthetic_data_gen.prompts import SYSTEM_PROMPT
+from synthetic_data_gen.types import ModelName, OllamaBaseUrl, PromptText, RawModelOutput
 
 
 class GenerationClient(Protocol):
-    model: str
+    model: ModelName
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: PromptText) -> RawModelOutput:
         ...
 
 
 @dataclass
 class DeepAgentOllamaClient:
-    model: str = "gemma4:e2b"
-    base_url: str = "http://localhost:11434"
+    model: ModelName = ModelName("gemma4:e2b")
+    base_url: OllamaBaseUrl = OllamaBaseUrl("http://localhost:11434")
     temperature: float = 0.8
 
     def __post_init__(self) -> None:
@@ -29,8 +30,8 @@ class DeepAgentOllamaClient:
         from langchain_ollama import ChatOllama
 
         llm = ChatOllama(
-            model=self.model,
-            base_url=self.base_url,
+            model=str(self.model),
+            base_url=str(self.base_url),
             temperature=self.temperature,
             format="json",
         )
@@ -41,19 +42,19 @@ class DeepAgentOllamaClient:
             system_prompt=SYSTEM_PROMPT,
         )
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: PromptText) -> RawModelOutput:
         result = self._agent.invoke({"messages": [{"role": "user", "content": prompt}]})
         messages = result.get("messages", []) if isinstance(result, dict) else []
         if not messages:
-            return str(result)
+            return RawModelOutput(str(result))
         last = messages[-1]
         content = getattr(last, "content", None)
         if content is None and isinstance(last, dict):
             content = last.get("content")
-        return str(content)
+        return RawModelOutput(str(content))
 
 
-def list_ollama_models(base_url: str) -> set[str]:
+def list_ollama_models(base_url: OllamaBaseUrl) -> set[ModelName]:
     url = f"{base_url.rstrip('/')}/api/tags"
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
@@ -63,10 +64,10 @@ def list_ollama_models(base_url: str) -> set[str]:
             f"Could not reach Ollama at {base_url}. Is `ollama serve` running?"
         ) from exc
     models = payload.get("models", [])
-    return {str(item.get("name")) for item in models if item.get("name")}
+    return {ModelName(str(item.get("name"))) for item in models if item.get("name")}
 
 
-def assert_ollama_model_available(model: str, base_url: str) -> None:
+def assert_ollama_model_available(model: ModelName, base_url: OllamaBaseUrl) -> None:
     models = list_ollama_models(base_url)
     if model not in models:
         raise RuntimeError(

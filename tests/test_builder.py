@@ -8,21 +8,35 @@ import numpy as np
 
 from synthetic_data_gen.builder import BuildConfig, build_dataset
 from synthetic_data_gen.labels import LABELS
-from synthetic_data_gen.schema import SeedRecord
+from synthetic_data_gen.types import (
+    CompanyName,
+    GeneratedText,
+    GroupKey,
+    ModelName,
+    PromptText,
+    RawModelOutput,
+    SeedRecord,
+    SourceName,
+)
 
 
 class FakeClient:
-    model = "gemma4:e2b"
+    model = ModelName("gemma4:e2b")
 
     def __init__(self) -> None:
         self.count = 0
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: PromptText) -> RawModelOutput:
         self.count += 1
-        route = re.search(r"Target route: ([a-z_]+)", prompt).group(1)  # type: ignore[union-attr]
-        persona = re.search(r"- role: ([^\n]+)", prompt).group(1)  # type: ignore[union-attr]
-        institution = re.search(r"- institution type: ([^\n]+)", prompt).group(1)  # type: ignore[union-attr]
-        company = re.search(r"- company: ([^\n]+)", prompt).group(1)  # type: ignore[union-attr]
+        route_match = re.search(r"Target route: ([a-z_]+)", prompt)
+        persona_match = re.search(r"- role: ([^\n]+)", prompt)
+        institution_match = re.search(r"- institution type: ([^\n]+)", prompt)
+        company_match = re.search(r"- company: ([^\n]+)", prompt)
+        assert route_match and persona_match and institution_match and company_match
+        route = route_match.group(1)
+        persona = persona_match.group(1)
+        institution = institution_match.group(1)
+        company = company_match.group(1)
         rows = [
             {
                 "text": (
@@ -37,11 +51,11 @@ class FakeClient:
             }
             for index in range(2)
         ]
-        return json.dumps(rows)
+        return RawModelOutput(json.dumps(rows))
 
 
 class FakeEmbedder:
-    def encode_one(self, text: str) -> np.ndarray:
+    def encode_one(self, text: GeneratedText) -> np.ndarray:
         vector = np.zeros(64, dtype=np.float32)
         vector[sum(text.encode("utf-8")) % len(vector)] = 1.0
         return vector
@@ -50,16 +64,16 @@ class FakeEmbedder:
 def test_build_dataset_with_fake_client_writes_exact_outputs(tmp_path: Path) -> None:
     seeds = [
         SeedRecord(
-            source="unit",
-            group_key=f"unit:seed:{index}",
-            context=f"Revenue and margin context for company {index}.",
-            company=f"Company {index} Inc",
+            source=SourceName("unit"),
+            group_key=GroupKey(f"unit:seed:{index}"),
+            context=GeneratedText(f"Revenue and margin context for company {index}."),
+            company=CompanyName(f"Company {index} Inc"),
         )
         for index in range(40)
     ]
     summary = build_dataset(
         BuildConfig(
-            out_dir=str(tmp_path),
+            out_dir=tmp_path,
             train_size=10,
             eval_size=5,
             generation_batch_size=2,

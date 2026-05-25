@@ -4,13 +4,24 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Any
 
 from synthetic_data_gen.labels import LABELS, validate_route
-from synthetic_data_gen.schema import (
+from synthetic_data_gen.types import (
+    BatchId,
+    CompanyName,
+    EmbeddingModelName,
+    GeneratedText,
+    InstitutionType,
+    JsonObject,
+    Metadata,
+    ModelName,
+    PersonaName,
     RejectedCandidate,
+    RejectionReason,
+    RouteName,
     RouterExample,
     SeedRecord,
+    SourceName,
     normalize_text,
     stable_id,
 )
@@ -43,46 +54,66 @@ ANSWER_MARKERS = (
 )
 
 
-def reject(reason: str, raw_text: str, **metadata: Any) -> RejectedCandidate:
-    return RejectedCandidate(reason=reason, raw_text=raw_text, metadata=metadata)
+def reject(reason: RejectionReason, raw_text: object, **metadata: object) -> RejectedCandidate:
+    return RejectedCandidate(
+        reason=reason,
+        raw_text=normalize_text(raw_text),
+        metadata={key: normalize_text(value) for key, value in metadata.items()},
+    )
 
 
 def validate_generated_object(
-    payload: dict[str, Any],
+    payload: JsonObject,
     *,
-    expected_route: str,
+    expected_route: RouteName,
     seed: SeedRecord,
-    generator_model: str,
-    embedding_model: str,
-    generation_batch_id: str,
+    generator_model: ModelName,
+    embedding_model: EmbeddingModelName,
+    generation_batch_id: BatchId,
 ) -> RouterExample | RejectedCandidate:
-    raw_text = str(payload.get("text") or "")
+    raw_text = GeneratedText(str(payload.get("text") or ""))
     text = normalize_text(raw_text)
     try:
-        route = validate_route(str(payload.get("route") or ""))
+        route = validate_route(payload.get("route") or "")
     except ValueError:
-        return reject("invalid_route", raw_text, payload=payload, expected_route=expected_route)
+        return reject(
+            RejectionReason("invalid_route"),
+            raw_text,
+            payload=payload,
+            expected_route=expected_route,
+        )
     if route != expected_route:
-        return reject("wrong_route", raw_text, route=route, expected_route=expected_route)
+        return reject(
+            RejectionReason("wrong_route"),
+            raw_text,
+            route=route,
+            expected_route=expected_route,
+        )
 
     lowered = text.lower()
     for pattern in FORBIDDEN_TEXT_PATTERNS:
         if pattern in lowered:
-            return reject("forbidden_text", raw_text, route=route, pattern=pattern)
+            return reject(RejectionReason("forbidden_text"), raw_text, route=route, pattern=pattern)
     for marker in ANSWER_MARKERS:
         if marker in lowered:
-            return reject("answer_like_output", raw_text, route=route, marker=marker)
+            return reject(
+                RejectionReason("answer_like_output"),
+                raw_text,
+                route=route,
+                marker=marker,
+            )
     if re.match(r"^\s*[-*\d.]+\s+", text):
-        return reject("list_or_answer_format", raw_text, route=route)
+        return reject(RejectionReason("list_or_answer_format"), raw_text, route=route)
     if len(text.split()) < 8:
-        return reject("too_short", raw_text, route=route)
+        return reject(RejectionReason("too_short"), raw_text, route=route)
     if len(text.split()) > 110:
-        return reject("too_long", raw_text, route=route)
+        return reject(RejectionReason("too_long"), raw_text, route=route)
 
-    persona = normalize_text(str(payload.get("persona") or ""))
-    institution_type = normalize_text(str(payload.get("institution_type") or ""))
-    company = normalize_text(str(payload.get("company") or seed.company or "")) or None
-    metadata = dict(payload.get("metadata") or {})
+    persona = PersonaName(normalize_text(payload.get("persona") or ""))
+    institution_type = InstitutionType(normalize_text(payload.get("institution_type") or ""))
+    company_text = normalize_text(payload.get("company") or seed.company or "")
+    company = CompanyName(company_text) if company_text else None
+    metadata: Metadata = dict(payload.get("metadata") or {})
     metadata.update(
         {
             "generator_model": generator_model,
@@ -100,7 +131,7 @@ def validate_generated_object(
         id=stable_id(generator_model, route, seed.group_key, text),
         text=text,
         route=route,
-        source=f"synthetic:ollama:{generator_model}",
+        source=SourceName(f"synthetic:ollama:{generator_model}"),
         company=company,
         metadata=metadata,
     )
@@ -113,5 +144,5 @@ def assert_no_forbidden_labels(rows: list[RouterExample]) -> None:
         raise ValueError(f"Forbidden labels found: {sorted(forbidden)}")
 
 
-def route_counts(rows: list[RouterExample]) -> dict[str, int]:
+def route_counts(rows: list[RouterExample]) -> dict[RouteName, int]:
     return dict(sorted(Counter(row.route for row in rows).items()))

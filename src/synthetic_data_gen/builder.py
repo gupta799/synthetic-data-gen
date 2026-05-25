@@ -8,7 +8,6 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Any
 
 from tqdm.auto import tqdm
 
@@ -23,53 +22,63 @@ from synthetic_data_gen.observability import EventLogger, WandbLogger, configure
 from synthetic_data_gen.parser import parse_json_objects
 from synthetic_data_gen.personas import select_persona
 from synthetic_data_gen.prompts import ROUTE_INSTRUCTIONS, build_generation_prompt
-from synthetic_data_gen.schema import (
+from synthetic_data_gen.seeds import load_seed_pool
+from synthetic_data_gen.splitting import split_exact_by_route, validate_exact_splits
+from synthetic_data_gen.types import (
+    ArtifactName,
+    ArtifactType,
+    EmbeddingModelName,
+    EventName,
+    GeneratedText,
+    GroupKey,
+    JsonObject,
+    MetricPayload,
+    ModelName,
+    OllamaBaseUrl,
+    ProjectName,
     RejectedCandidate,
+    RejectionReason,
+    RouteName,
     RouterExample,
+    RunName,
     SeedRecord,
-    normalize_text,
     stable_id,
     write_jsonl,
     write_rejected_jsonl,
 )
-from synthetic_data_gen.seeds import load_seed_pool
-from synthetic_data_gen.splitting import split_exact_by_route, validate_exact_splits
 from synthetic_data_gen.validation import validate_generated_object
 
 
 @dataclass(frozen=True)
 class BuildConfig:
-    out_dir: str = "data/synthetic-10k"
+    out_dir: Path = Path("data/synthetic-10k")
     train_size: int = 8000
     eval_size: int = 2000
     seed: int = 7
-    generator_model: str = "gemma4:e2b"
-    ollama_base_url: str = "http://localhost:11434"
-    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    generator_model: ModelName = ModelName("gemma4:e2b")
+    ollama_base_url: OllamaBaseUrl = OllamaBaseUrl("http://localhost:11434")
+    embedding_model: EmbeddingModelName = EmbeddingModelName("BAAI/bge-small-en-v1.5")
     generation_batch_size: int = 4
     similarity_threshold: float = 0.88
     max_per_seed_group: int = 5
     max_sujet_rows: int | None = None
     max_attempts_multiplier: int = 12
     temperature: float = 0.8
-    wandb_project: str | None = None
-    wandb_run_name: str | None = None
-    langsmith_project: str | None = None
+    wandb_project: ProjectName | None = None
+    wandb_run_name: RunName | None = None
+    langsmith_project: ProjectName | None = None
     skip_model_check: bool = False
 
 
-def make_generation_config(config: BuildConfig) -> dict[str, Any]:
+def make_generation_config(config: BuildConfig) -> JsonObject:
     payload = asdict(config)
+    payload["out_dir"] = str(config.out_dir)
     payload["labels"] = list(LABELS)
     payload["route_instructions"] = ROUTE_INSTRUCTIONS
     return payload
 
 
-def dedupe_key(text: str, route: str) -> tuple[str, str]:
-    return (normalize_text(text).lower(), route)
-
-
-def should_stop(counts: Counter[str], per_route_goal: int) -> bool:
+def should_stop(counts: Counter[RouteName], per_route_goal: int) -> bool:
     return all(counts[route] >= per_route_goal for route in LABELS)
 
 
@@ -82,8 +91,8 @@ def build_summary(
     config: BuildConfig,
     started: float,
     diversity: DiversityIndex,
-    leakage: dict[str, int],
-) -> dict[str, Any]:
+    leakage: MetricPayload,
+) -> JsonObject:
     return {
         "generator_model": config.generator_model,
         "embedding_model": config.embedding_model,
@@ -114,13 +123,13 @@ def build_dataset(
     client: GenerationClient | None = None,
     embedder: Embedder | None = None,
     seeds: list[SeedRecord] | None = None,
-) -> dict[str, Any]:
+) -> JsonObject:
     if config.train_size % len(LABELS) != 0 or config.eval_size % len(LABELS) != 0:
         raise ValueError("train_size and eval_size must be divisible by the number of labels.")
     if config.generation_batch_size < 1:
         raise ValueError("generation_batch_size must be at least 1.")
 
-    out_dir = Path(config.out_dir)
+    out_dir = config.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
     configure_langsmith(config.langsmith_project)
     event_logger = EventLogger(out_dir / "generation_events.jsonl")
@@ -152,9 +161,8 @@ def build_dataset(
         max_attempts = per_route_candidate_goal * config.max_attempts_multiplier * len(LABELS)
         accepted: list[RouterExample] = []
         rejected: list[RejectedCandidate] = []
-        seen_texts: set[tuple[str, str]] = set()
-        seed_group_counts: dict[str, int] = defaultdict(int)
-        route_counts: Counter[str] = Counter()
+        seed_group_counts: dict[GroupKey, int] = defaultdict(int)
+        route_counts: Counter[RouteName] = Counter()
         diversity = DiversityIndex(threshold=config.similarity_threshold)
         attempts = 0
 
@@ -183,7 +191,7 @@ def build_dataset(
                 batch_size=config.generation_batch_size,
             )
             event_logger.log(
-                "generation_batch_started",
+                EventName("generation_batch_started"),
                 batch_id=batch_id,
                 route=route,
                 persona=persona.name,
@@ -196,15 +204,15 @@ def build_dataset(
             except Exception as exc:
                 rejected.append(
                     RejectedCandidate(
-                        reason="generation_or_parse_error",
-                        raw_text=str(exc),
+                        reason=RejectionReason("generation_or_parse_error"),
+                        raw_text=GeneratedText(str(exc)),
                         route=route,
                         persona=persona.name,
                         seed_group=seed_record.group_key,
                     )
                 )
                 event_logger.log(
-                    "generation_batch_rejected",
+                    EventName("generation_batch_rejected"),
                     batch_id=batch_id,
                     route=route,
                     reason="generation_or_parse_error",
@@ -217,8 +225,8 @@ def build_dataset(
                 if seed_group_counts[seed_record.group_key] >= config.max_per_seed_group:
                     rejected.append(
                         RejectedCandidate(
-                            reason="seed_group_cap",
-                            raw_text=json.dumps(obj, ensure_ascii=False),
+                            reason=RejectionReason("seed_group_cap"),
+                            raw_text=GeneratedText(json.dumps(obj, ensure_ascii=False)),
                             route=route,
                             persona=persona.name,
                             seed_group=seed_record.group_key,
@@ -236,24 +244,12 @@ def build_dataset(
                 if isinstance(result, RejectedCandidate):
                     rejected.append(result)
                     continue
-                key = dedupe_key(result.text, result.route)
-                if key in seen_texts:
-                    rejected.append(
-                        RejectedCandidate(
-                            reason="duplicate_text",
-                            raw_text=result.text,
-                            route=result.route,
-                            persona=persona.name,
-                            seed_group=seed_record.group_key,
-                        )
-                    )
-                    continue
                 vector = embedder.encode_one(result.text)
                 accepted_by_diversity, nearest = diversity.accept(result.route, vector)
                 if not accepted_by_diversity:
                     rejected.append(
                         RejectedCandidate(
-                            reason="near_duplicate_embedding",
+                            reason=RejectionReason("low_diversity_embedding"),
                             raw_text=result.text,
                             route=result.route,
                             persona=persona.name,
@@ -264,7 +260,6 @@ def build_dataset(
                     continue
 
                 result.metadata["nearest_similarity"] = nearest
-                seen_texts.add(key)
                 accepted.append(result)
                 seed_group_counts[seed_record.group_key] += 1
                 route_counts[result.route] += 1
@@ -274,7 +269,7 @@ def build_dataset(
                     break
 
             event_logger.log(
-                "generation_batch_finished",
+                EventName("generation_batch_finished"),
                 batch_id=batch_id,
                 route=route,
                 accepted=batch_accepted,
@@ -321,8 +316,12 @@ def build_dataset(
             leakage=leakage,
         )
         (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        event_logger.log("build_finished", summary=summary)
-        wandb_logger.log_artifact("synthetic-finance-router-data", "dataset", out_dir)
+        event_logger.log(EventName("build_finished"), summary=summary)
+        wandb_logger.log_artifact(
+            ArtifactName("synthetic-finance-router-data"),
+            ArtifactType("dataset"),
+            out_dir,
+        )
         wandb_logger.finish(summary=summary)
         return summary
     finally:

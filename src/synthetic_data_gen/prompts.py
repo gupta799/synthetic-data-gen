@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from synthetic_data_gen.labels import LABELS
 from synthetic_data_gen.personas import Persona
-from synthetic_data_gen.schema import SeedRecord
+from synthetic_data_gen.types import PromptText, RouteName, SeedRecord
 
-SYSTEM_PROMPT = """You generate training data for a finance-only LLM router.
+SYSTEM_PROMPT = PromptText("""You generate training data for a finance-only LLM router.
 
 The classifier will see a finance prompt and choose exactly one route:
 - metric_extraction
@@ -21,26 +21,26 @@ synthetic-data language, or phrases like "as an AI".
 
 The generated `text` must be the prompt a real finance user would send to an assistant. It should
 ask for work, not provide the work. It should not reveal the route name.
-"""
+""")
 
-ROUTE_INSTRUCTIONS: dict[str, str] = {
-    "metric_extraction": (
+ROUTE_INSTRUCTIONS: dict[RouteName, PromptText] = {
+    RouteName("metric_extraction"): PromptText(
         "The prompt asks for a specific financial number, KPI, line item, ratio, table value, "
         "or period-specific metric. It should sound like a request to extract or identify a value."
     ),
-    "filing_summarization": (
+    RouteName("filing_summarization"): PromptText(
         "The prompt asks to summarize, brief, condense, or explain the key points from a filing, "
         "10-K, 10-Q, annual report, MD&A, note, risk section, or excerpt."
     ),
-    "financial_qa": (
+    RouteName("financial_qa"): PromptText(
         "The prompt asks a straightforward factual finance or filing question that does not "
         "require multi-step reasoning, comparison, or direct metric extraction."
     ),
-    "financial_reasoning": (
+    RouteName("financial_reasoning"): PromptText(
         "The prompt asks for drivers, why/how analysis, financial implications, calculation, ratio "
         "interpretation, valuation context, capital intensity, trend explanation, or judgment."
     ),
-    "comparative_analysis": (
+    RouteName("comparative_analysis"): PromptText(
         "The prompt compares companies, periods, segments, sectors, metrics, filings, or excerpts. "
         "It should ask for relative performance, stronger profile, better margin, trend "
         "comparison, or side-by-side analysis."
@@ -50,13 +50,13 @@ ROUTE_INSTRUCTIONS: dict[str, str] = {
 
 def build_generation_prompt(
     *,
-    route: str,
+    route: RouteName,
     persona: Persona,
     seed: SeedRecord,
     batch_size: int,
-) -> str:
+) -> PromptText:
     route_list = ", ".join(LABELS)
-    return f"""Generate {batch_size} diverse finance user prompts.
+    return PromptText(f"""Generate {batch_size} diverse finance user prompts.
 
 Target route: {route}
 Allowed routes: {route_list}
@@ -87,4 +87,4 @@ Rules:
 - Do not write answers, bullets, explanations, labels, or markdown.
 - Do not include the route name in the generated text.
 - Make the prompts diverse in wording, financial intent, and user phrasing.
-"""
+""")

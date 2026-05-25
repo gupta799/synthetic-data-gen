@@ -3,33 +3,48 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
-from typing import Any
+from collections.abc import Iterable, Mapping
+from typing import TypeAlias
 
-from synthetic_data_gen.schema import SeedRecord, normalize_text, stable_id
+from synthetic_data_gen.types import (
+    CompanyName,
+    DocumentType,
+    FiscalPeriod,
+    GeneratedText,
+    GroupKey,
+    SeedRecord,
+    SourceName,
+    normalize_text,
+    stable_id,
+)
 
-FINANCEBENCH_SOURCE = "PatronusAI/financebench"
-SUJET_SOURCE = "sujet-ai/Sujet-Financial-RAG-EN-Dataset"
+FINANCEBENCH_SOURCE = SourceName("PatronusAI/financebench")
+SUJET_SOURCE = SourceName("sujet-ai/Sujet-Financial-RAG-EN-Dataset")
+DatasetRow: TypeAlias = Mapping[str, object]
 
 
-def load_hf_dataset(dataset_name: str, *args: Any, **kwargs: Any):
+def load_hf_dataset(
+    dataset_name: SourceName,
+    *args: object,
+    **kwargs: object,
+) -> Iterable[DatasetRow]:
     from datasets import load_dataset
 
-    return load_dataset(dataset_name, *args, **kwargs)
+    return load_dataset(str(dataset_name), *args, **kwargs)
 
 
-def context_hash(text: str) -> str:
-    return stable_id(normalize_text(text).lower())
+def context_hash(text: GeneratedText) -> GroupKey:
+    return GroupKey(stable_id(normalize_text(text).lower()))
 
 
-def trim_context(text: str, max_chars: int = 1800) -> str:
+def trim_context(text: object, max_chars: int = 1800) -> GeneratedText:
     normalized = normalize_text(text)
     if len(normalized) <= max_chars:
         return normalized
-    return normalized[:max_chars].rsplit(" ", 1)[0]
+    return GeneratedText(normalized[:max_chars].rsplit(" ", 1)[0])
 
 
-def clean_company(candidate: str) -> str | None:
+def clean_company(candidate: object) -> CompanyName | None:
     cleaned = normalize_text(candidate).strip(" .,")
     if not cleaned or len(cleaned) > 80:
         return None
@@ -38,10 +53,13 @@ def clean_company(candidate: str) -> str | None:
         return None
     if lowered.startswith(("what ", "which ", "how ", "explain ", "compare ", "calculate ")):
         return None
-    return cleaned
+    return CompanyName(cleaned)
 
 
-def extract_company(question: str, context: str = "") -> str | None:
+def extract_company(
+    question: GeneratedText,
+    context: GeneratedText | None = None,
+) -> CompanyName | None:
     company_suffix = r"(?:Inc\.?|Corporation|Corp\.?|Company|Co\.?|Ltd\.?|LLC|PLC|Group)"
     patterns = (
         rf"\bfor ([A-Z][A-Za-z0-9 .,&'-]{{2,80}}?{company_suffix})(?: as | with |,|\?|$)",
@@ -49,7 +67,7 @@ def extract_company(question: str, context: str = "") -> str | None:
         rf"\b([A-Z][A-Za-z0-9 .,&'-]{{2,80}}?{company_suffix})'s\b",
         r"Exact name of registrant.*?([A-Z][A-Za-z0-9 .,&'-]{3,80})",
     )
-    haystacks = (question, context)
+    haystacks = (question, context or GeneratedText(""))
     for haystack in haystacks:
         for pattern in patterns:
             match = re.search(pattern, haystack)
@@ -62,21 +80,23 @@ def extract_company(question: str, context: str = "") -> str | None:
 
 def iter_financebench_seeds() -> Iterable[SeedRecord]:
     rows = load_hf_dataset(FINANCEBENCH_SOURCE, split="train")
-    seen: set[str] = set()
+    seen: set[GroupKey] = set()
     for row in rows:
         company = row.get("company")
         doc_name = row.get("doc_name")
         doc_period = row.get("doc_period")
         question = normalize_text(row.get("question") or "")
         if question:
-            group_key = f"financebench:{company}:{doc_name}:question:{row.get('financebench_id')}"
+            group_key = GroupKey(
+                f"financebench:{company}:{doc_name}:question:{row.get('financebench_id')}"
+            )
             yield SeedRecord(
                 source=FINANCEBENCH_SOURCE,
                 group_key=group_key,
                 context=question,
-                company=company,
-                document_type=doc_name,
-                period=doc_period,
+                company=CompanyName(str(company)) if company else None,
+                document_type=DocumentType(str(doc_name)) if doc_name else None,
+                period=FiscalPeriod(str(doc_period)) if doc_period else None,
                 metadata={
                     "financebench_id": row.get("financebench_id"),
                     "question_type": row.get("question_type"),
@@ -94,17 +114,17 @@ def iter_financebench_seeds() -> Iterable[SeedRecord]:
             seen.add(group_hash)
             yield SeedRecord(
                 source=FINANCEBENCH_SOURCE,
-                group_key=f"financebench:context:{group_hash}",
+                group_key=GroupKey(f"financebench:context:{group_hash}"),
                 context=text,
-                company=company,
-                document_type=doc_name,
-                period=doc_period,
+                company=CompanyName(str(company)) if company else None,
+                document_type=DocumentType(str(doc_name)) if doc_name else None,
+                period=FiscalPeriod(str(doc_period)) if doc_period else None,
                 metadata={"doc_name": doc_name, "doc_period": doc_period},
             )
 
 
 def iter_sujet_seeds(max_rows: int | None = None) -> Iterable[SeedRecord]:
-    seen_contexts: set[str] = set()
+    seen_contexts: set[GroupKey] = set()
     seen_rows = 0
     for split in ("train", "test"):
         rows = load_hf_dataset(SUJET_SOURCE, split=split, streaming=True)
@@ -119,10 +139,10 @@ def iter_sujet_seeds(max_rows: int | None = None) -> Iterable[SeedRecord]:
             seen_contexts.add(group_hash)
             yield SeedRecord(
                 source=SUJET_SOURCE,
-                group_key=f"sujet:context:{group_hash}",
-                context=f"Question seed: {question}\n\nContext seed: {context}",
+                group_key=GroupKey(f"sujet:context:{group_hash}"),
+                context=GeneratedText(f"Question seed: {question}\n\nContext seed: {context}"),
                 company=extract_company(question, context),
-                document_type="filing/context",
+                document_type=DocumentType("filing/context"),
                 metadata={"source_split": split},
             )
             seen_rows += 1

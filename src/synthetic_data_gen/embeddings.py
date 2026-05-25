@@ -3,25 +3,26 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
 from typing import Protocol
 
 import numpy as np
 
+from synthetic_data_gen.types import EmbeddingModelName, GeneratedText, MetricPayload, RouteName
+
 
 class Embedder(Protocol):
-    def encode_one(self, text: str) -> np.ndarray:
+    def encode_one(self, text: GeneratedText) -> np.ndarray:
         ...
 
 
 class SentenceTransformerEmbedder:
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: EmbeddingModelName) -> None:
         from sentence_transformers import SentenceTransformer
 
         self.model_name = model_name
-        self._model = SentenceTransformer(model_name)
+        self._model = SentenceTransformer(str(model_name))
 
-    def encode_one(self, text: str) -> np.ndarray:
+    def encode_one(self, text: GeneratedText) -> np.ndarray:
         vector = self._model.encode([text], normalize_embeddings=True)[0]
         return np.asarray(vector, dtype=np.float32)
 
@@ -29,10 +30,10 @@ class SentenceTransformerEmbedder:
 class DiversityIndex:
     def __init__(self, threshold: float = 0.88) -> None:
         self.threshold = threshold
-        self._vectors: dict[str, list[np.ndarray]] = defaultdict(list)
+        self._vectors: dict[RouteName, list[np.ndarray]] = defaultdict(list)
         self.max_seen_similarity: list[float] = []
 
-    def nearest_similarity(self, route: str, vector: np.ndarray) -> float:
+    def nearest_similarity(self, route: RouteName, vector: np.ndarray) -> float:
         vectors = self._vectors.get(route) or []
         if not vectors:
             return 0.0
@@ -40,7 +41,7 @@ class DiversityIndex:
         similarities = matrix @ vector
         return float(np.max(similarities))
 
-    def accept(self, route: str, vector: np.ndarray) -> tuple[bool, float]:
+    def accept(self, route: RouteName, vector: np.ndarray) -> tuple[bool, float]:
         nearest = self.nearest_similarity(route, vector)
         self.max_seen_similarity.append(nearest)
         if nearest >= self.threshold:
@@ -49,7 +50,7 @@ class DiversityIndex:
         return True, nearest
 
     @property
-    def similarity_stats(self) -> dict[str, float]:
+    def similarity_stats(self) -> MetricPayload:
         if not self.max_seen_similarity:
             return {"count": 0, "max": 0.0, "mean": 0.0, "p95": 0.0}
         values = np.asarray(self.max_seen_similarity, dtype=np.float32)
@@ -64,7 +65,7 @@ class DiversityIndex:
 class StaticEmbedder:
     """Tiny deterministic embedder for tests."""
 
-    def encode_one(self, text: str) -> np.ndarray:
+    def encode_one(self, text: GeneratedText) -> np.ndarray:
         lowered = text.lower()
         base = np.zeros(8, dtype=np.float32)
         for index, char in enumerate(lowered.encode("utf-8")):
@@ -73,7 +74,3 @@ class StaticEmbedder:
         if norm == 0:
             return base
         return base / norm
-
-
-def pairwise_duplicates(texts: Sequence[str]) -> int:
-    return len(texts) - len(set(texts))

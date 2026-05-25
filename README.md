@@ -29,6 +29,15 @@ Routes:
 - `financial_reasoning`
 - `comparative_analysis`
 
+## Project Layout
+
+- `src/synthetic_data_gen/types/`: domain types, JSON payload types, records, and text helpers.
+- `src/synthetic_data_gen/client.py`: Ollama/DeepAgents model boundary.
+- `src/synthetic_data_gen/prompts.py`: baked generation prompt templates.
+- `src/synthetic_data_gen/validation.py`: strict conversion from model JSON to classifier rows.
+- `src/synthetic_data_gen/builder.py`: quota loop, embedding diversity gate, grouped split, artifacts.
+- `src/synthetic_data_gen/observability.py`: local events plus optional W&B/LangSmith hooks.
+
 ## Setup
 
 ```bash
