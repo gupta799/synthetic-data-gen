@@ -93,5 +93,6 @@ def test_build_dataset_with_fake_client_writes_exact_outputs(tmp_path: Path) -> 
     assert (tmp_path / "train.jsonl").exists()
     assert (tmp_path / "eval.jsonl").exists()
     assert (tmp_path / "summary.json").exists()
+    assert (tmp_path / "accepted_candidates.jsonl").exists()
     assert (tmp_path / "rejected.jsonl").exists()
     assert (tmp_path / "generation_events.jsonl").exists()

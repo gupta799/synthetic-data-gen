@@ -8,6 +8,7 @@ in three layers.
 Always written:
 
 - `generation_events.jsonl`: append-only event stream for batches, rejects, and completion.
+- `accepted_candidates.jsonl`: accepted candidates as soon as they pass validation and diversity.
 - `rejected.jsonl`: rejected candidate text and rejection reason.
 - `summary.json`: final counts, distributions, rejection reasons, and embedding similarity stats.
 - `generation_config.json`: reproducible build parameters.
@@ -16,7 +17,7 @@ Always written:
 ## LangSmith
 
 When `--langsmith-project` is provided and `LANGSMITH_API_KEY` or `LANGCHAIN_API_KEY` is set, the
-builder enables LangSmith tracing before constructing the DeepAgents/Ollama client. Without an API
+builder enables LangSmith tracing before constructing the selected backend client. Without an API
 key, tracing is skipped and the local event stream records `disabled:missing_api_key`.
 
 ## Weights & Biases

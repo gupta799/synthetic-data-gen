@@ -5,6 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WORKSPACE_DIR="${WORKSPACE_DIR:-/workspace}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
+INSTALL_OLLAMA="${INSTALL_OLLAMA:-0}"
+INSTALL_VLLM="${INSTALL_VLLM:-1}"
+VLLM_PACKAGE="${VLLM_PACKAGE:-vllm>=0.12.0}"
 
 if [[ -d "${WORKSPACE_DIR}" ]]; then
   CACHE_ROOT="${CACHE_ROOT:-${WORKSPACE_DIR}/.cache}"
@@ -57,7 +60,10 @@ install_system_packages() {
       ca-certificates \
       curl \
       git \
+      jq \
+      less \
       pciutils \
+      vim \
       zstd
     apt-get clean
     return
@@ -77,6 +83,10 @@ install_uv() {
 }
 
 install_ollama() {
+  if [[ "${INSTALL_OLLAMA}" != "1" ]]; then
+    warn "Skipping Ollama install because INSTALL_OLLAMA=${INSTALL_OLLAMA}"
+    return
+  fi
   if command -v ollama >/dev/null 2>&1; then
     success "Ollama already installed: $(ollama --version 2>/dev/null || true)"
     return
@@ -102,6 +112,16 @@ sync_repo() {
   uv sync --python "${PYTHON_VERSION}"
 }
 
+install_vllm() {
+  if [[ "${INSTALL_VLLM}" != "1" ]]; then
+    warn "Skipping vLLM install because INSTALL_VLLM=${INSTALL_VLLM}"
+    return
+  fi
+  info "Installing vLLM into the repo environment"
+  cd "${REPO_DIR}"
+  uv pip install "${VLLM_PACKAGE}"
+}
+
 print_next_steps() {
   success "RunPod setup complete"
   printf '\n'
@@ -111,15 +131,13 @@ print_next_steps() {
   printf '  HF_HOME=%s\n' "${HF_HOME}"
   printf '  TORCH_HOME=%s\n' "${TORCH_HOME}"
   printf '\n'
-  printf 'Start Ollama in one terminal:\n'
-  printf '  export OLLAMA_MODELS="%s"\n' "${OLLAMA_MODELS}"
-  printf '  ollama serve\n'
+  printf 'Start vLLM in one terminal:\n'
+  printf '  cd %s\n' "${REPO_DIR}"
+  printf '  bash scripts/start_vllm_gemma4.sh\n'
   printf '\n'
   printf 'Then, in another terminal:\n'
-  printf '  export OLLAMA_MODELS="%s"\n' "${OLLAMA_MODELS}"
-  printf '  ollama pull gemma4:e2b\n'
   printf '  cd %s\n' "${REPO_DIR}"
-  printf '  uv run synthetic-data-gen build --out %s/synthetic-10k --train-size 8000 --eval-size 2000 --generator-model gemma4:e2b --ollama-base-url http://localhost:11434 --embedding-model BAAI/bge-small-en-v1.5 --embedding-device cuda --wandb-project finance-router-data-gen\n' "${OUTPUT_ROOT}"
+  printf '  uv run synthetic-data-gen build --out %s/synthetic-10k --train-size 8000 --eval-size 2000 --generator-backend vllm --generator-model google/gemma-4-E4B-it --vllm-base-url http://localhost:8000/v1 --embedding-model BAAI/bge-small-en-v1.5 --embedding-device cuda --wandb-project finance-router-data-gen\n' "${OUTPUT_ROOT}"
 }
 
 mkdir -p "${UV_CACHE_DIR}" "${HF_HOME}" "${TORCH_HOME}" "${PIP_CACHE_DIR}" "${OLLAMA_MODELS}"
@@ -128,4 +146,5 @@ install_uv
 install_ollama
 write_shell_env
 sync_repo
+install_vllm
 print_next_steps

@@ -1,18 +1,17 @@
 [project]
 name = "synthetic-data-gen"
 version = "0.1.0"
-description = "Ollama-backed synthetic finance router dataset generation with observability."
+description = "vLLM/Ollama synthetic finance router dataset generation with observability."
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = "MIT"
 authors = [{ name = "Jaiydev Gupta" }]
-keywords = ["finance", "synthetic-data", "ollama", "langsmith", "wandb", "routing"]
+keywords = ["finance", "synthetic-data", "vllm", "ollama", "wandb", "routing"]
 dependencies = [
   "datasets>=3.0.0",
-  "deepagents>=0.1.0",
-  "langchain-ollama>=0.2.0",
   "langsmith>=0.2.0",
   "numpy>=1.26.0",
+  "openai>=1.54.0",
   "rich>=13.0.0",
   "sentence-transformers>=3.0.0",
   "tqdm>=4.66.0",

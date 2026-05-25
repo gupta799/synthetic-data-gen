@@ -5,6 +5,7 @@ from synthetic_data_gen.types import (
     CompanyName,
     EmbeddingModelName,
     GeneratedText,
+    GeneratorBackend,
     GroupKey,
     ModelName,
     RejectedCandidate,
@@ -36,6 +37,7 @@ def test_validate_generated_object_returns_classifier_schema() -> None:
         },
         expected_route=RouteName("metric_extraction"),
         seed=seed(),
+        generator_backend=GeneratorBackend("vllm"),
         generator_model=ModelName("gemma4:e2b"),
         embedding_model=EmbeddingModelName("BAAI/bge-small-en-v1.5"),
         generation_batch_id=BatchId("batch-1"),
@@ -43,7 +45,8 @@ def test_validate_generated_object_returns_classifier_schema() -> None:
 
     assert not isinstance(row, RejectedCandidate)
     assert row.route == "metric_extraction"
-    assert row.source == "synthetic:ollama:gemma4:e2b"
+    assert row.source == "synthetic:vllm:gemma4:e2b"
+    assert row.metadata["generator_backend"] == "vllm"
     assert row.metadata["group_key"] == "unit:apple:2023"
 
 
@@ -59,6 +62,7 @@ def test_validate_generated_object_rejects_route_leakage() -> None:
         },
         expected_route=RouteName("metric_extraction"),
         seed=seed(),
+        generator_backend=GeneratorBackend("vllm"),
         generator_model=ModelName("gemma4:e2b"),
         embedding_model=EmbeddingModelName("BAAI/bge-small-en-v1.5"),
         generation_batch_id=BatchId("batch-1"),

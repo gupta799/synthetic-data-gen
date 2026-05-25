@@ -25,8 +25,7 @@ DEFAULT_EMBEDDING_DEVICE = EmbeddingDevice("auto")
 
 
 class Embedder(Protocol):
-    def encode_one(self, text: GeneratedText) -> np.ndarray:
-        ...
+    def encode_one(self, text: GeneratedText) -> np.ndarray: ...
 
 
 class SentenceTransformerEmbedder:

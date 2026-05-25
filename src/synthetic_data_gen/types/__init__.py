@@ -13,10 +13,14 @@ from synthetic_data_gen.types.domain import (
     ExampleId,
     FiscalPeriod,
     GeneratedText,
+    GeneratorBackend,
     GroupKey,
     InstitutionType,
     ModelName,
+    ModelServerUrl,
     OllamaBaseUrl,
+    OpenAIApiKey,
+    OpenAIBaseUrl,
     PersonaName,
     ProjectName,
     PromptText,
@@ -40,7 +44,6 @@ from synthetic_data_gen.types.records import (
     RouterExample,
     SeedRecord,
     write_jsonl,
-    write_rejected_jsonl,
 )
 from synthetic_data_gen.types.text import normalize_text, stable_id
 
@@ -57,6 +60,7 @@ __all__ = [
     "ExampleId",
     "FiscalPeriod",
     "GeneratedText",
+    "GeneratorBackend",
     "GroupKey",
     "InstitutionType",
     "JsonObject",
@@ -65,7 +69,10 @@ __all__ = [
     "Metadata",
     "MetricPayload",
     "ModelName",
+    "ModelServerUrl",
     "OllamaBaseUrl",
+    "OpenAIApiKey",
+    "OpenAIBaseUrl",
     "PersonaName",
     "ProjectName",
     "PromptText",
@@ -82,5 +89,4 @@ __all__ = [
     "normalize_text",
     "stable_id",
     "write_jsonl",
-    "write_rejected_jsonl",
 ]

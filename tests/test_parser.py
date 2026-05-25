@@ -21,3 +21,15 @@ def test_parse_json_objects_wraps_single_object() -> None:
 
     assert len(rows) == 1
     assert rows[0]["route"] == "filing_summarization"
+
+
+def test_parse_json_objects_unwraps_schema_items() -> None:
+    rows = parse_json_objects(
+        RawModelOutput(
+            '{"items": [{"text": "Compare Apple and Microsoft revenue growth.", '
+            '"route": "comparative_analysis"}]}'
+        )
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["route"] == "comparative_analysis"

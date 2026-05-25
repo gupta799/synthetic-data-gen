@@ -1,4 +1,4 @@
-"""Prompts for Gemma-backed finance router data generation."""
+"""Prompts for schema-backed finance router data generation."""
 
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ Grounding seed:
 - context: {seed.short_context}
 
 Rules:
-- Return a JSON array of exactly {batch_size} objects.
+- Return a JSON object with an `items` array containing exactly {batch_size} objects.
 - Each object must have: text, route, company, persona, institution_type, metadata.
 - route must be exactly "{route}".
 - persona must be exactly "{persona.name}".

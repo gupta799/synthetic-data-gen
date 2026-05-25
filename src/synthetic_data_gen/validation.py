@@ -11,6 +11,7 @@ from synthetic_data_gen.types import (
     CompanyName,
     EmbeddingModelName,
     GeneratedText,
+    GeneratorBackend,
     InstitutionType,
     JsonObject,
     Metadata,
@@ -67,6 +68,7 @@ def validate_generated_object(
     *,
     expected_route: RouteName,
     seed: SeedRecord,
+    generator_backend: GeneratorBackend,
     generator_model: ModelName,
     embedding_model: EmbeddingModelName,
     generation_batch_id: BatchId,
@@ -117,6 +119,7 @@ def validate_generated_object(
     metadata.update(
         {
             "generator_model": generator_model,
+            "generator_backend": generator_backend,
             "embedding_model": embedding_model,
             "persona": persona,
             "institution_type": institution_type,
@@ -131,7 +134,7 @@ def validate_generated_object(
         id=stable_id(generator_model, route, seed.group_key, text),
         text=text,
         route=route,
-        source=SourceName(f"synthetic:ollama:{generator_model}"),
+        source=SourceName(f"synthetic:{generator_backend}:{generator_model}"),
         company=company,
         metadata=metadata,
     )

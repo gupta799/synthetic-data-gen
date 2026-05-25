@@ -8,14 +8,18 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
+from synthetic_data_gen.backends import VLLM_BACKEND, openai_api_key_from_env
 from synthetic_data_gen.builder import BuildConfig, build_dataset
 from synthetic_data_gen.types import (
     CliArg,
     EmbeddingDevice,
     EmbeddingModelName,
+    GeneratorBackend,
     JsonObject,
     ModelName,
     OllamaBaseUrl,
+    OpenAIApiKey,
+    OpenAIBaseUrl,
     ProjectName,
     RunName,
 )
@@ -31,7 +35,12 @@ def cmd_build(args: argparse.Namespace) -> None:
         train_size=args.train_size,
         eval_size=args.eval_size,
         seed=args.seed,
+        generator_backend=GeneratorBackend(args.generator_backend),
         generator_model=ModelName(args.generator_model),
+        openai_base_url=OpenAIBaseUrl(args.openai_base_url),
+        openai_api_key=(
+            OpenAIApiKey(args.openai_api_key) if args.openai_api_key else openai_api_key_from_env()
+        ),
         ollama_base_url=OllamaBaseUrl(args.ollama_base_url),
         embedding_model=EmbeddingModelName(args.embedding_model),
         embedding_device=EmbeddingDevice(args.embedding_device),
@@ -53,8 +62,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="synthetic-data-gen",
         description=(
-            "Generate synthetic finance router datasets with Ollama, embeddings, "
-            "and observability."
+            "Generate synthetic finance router datasets with vLLM or Ollama model servers, "
+            "schema output, embeddings, and observability."
         ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -64,7 +73,19 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--train-size", type=int, default=8000)
     build.add_argument("--eval-size", type=int, default=2000)
     build.add_argument("--seed", type=int, default=7)
-    build.add_argument("--generator-model", default="gemma4:e2b")
+    build.add_argument("--generator-backend", choices=("vllm", "ollama"), default=VLLM_BACKEND)
+    build.add_argument("--generator-model", default="google/gemma-4-E4B-it")
+    build.add_argument(
+        "--vllm-base-url",
+        dest="openai_base_url",
+        default=os.getenv("VLLM_BASE_URL")
+        or os.getenv("OPENAI_BASE_URL", "http://localhost:8000/v1"),
+        help="OpenAI-compatible base URL used when --generator-backend vllm.",
+    )
+    build.add_argument(
+        "--openai-api-key",
+        default=os.getenv("OPENAI_API_KEY") or os.getenv("VLLM_API_KEY"),
+    )
     build.add_argument(
         "--ollama-base-url",
         default=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),

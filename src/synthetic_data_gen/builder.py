@@ -5,16 +5,19 @@ from __future__ import annotations
 import json
 import random
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from time import perf_counter
 
 from tqdm.auto import tqdm
 
-from synthetic_data_gen.client import (
-    DeepAgentOllamaClient,
+from synthetic_data_gen.backends import (
+    VLLM_BACKEND,
     GenerationClient,
-    assert_ollama_model_available,
+    assert_generation_backend_available,
+    create_generation_client,
+    generation_server_url,
+    normalize_generator_backend,
 )
 from synthetic_data_gen.console import log_info, log_success, log_warning
 from synthetic_data_gen.embeddings import DiversityIndex, Embedder, SentenceTransformerEmbedder
@@ -32,11 +35,14 @@ from synthetic_data_gen.types import (
     EmbeddingModelName,
     EventName,
     GeneratedText,
+    GeneratorBackend,
     GroupKey,
     JsonObject,
     MetricPayload,
     ModelName,
     OllamaBaseUrl,
+    OpenAIApiKey,
+    OpenAIBaseUrl,
     ProjectName,
     RejectedCandidate,
     RejectionReason,
@@ -46,7 +52,6 @@ from synthetic_data_gen.types import (
     SeedRecord,
     stable_id,
     write_jsonl,
-    write_rejected_jsonl,
 )
 from synthetic_data_gen.validation import validate_generated_object
 
@@ -57,7 +62,10 @@ class BuildConfig:
     train_size: int = 8000
     eval_size: int = 2000
     seed: int = 7
-    generator_model: ModelName = ModelName("gemma4:e2b")
+    generator_backend: GeneratorBackend = VLLM_BACKEND
+    generator_model: ModelName = ModelName("google/gemma-4-E4B-it")
+    openai_base_url: OpenAIBaseUrl = OpenAIBaseUrl("http://localhost:8000/v1")
+    openai_api_key: OpenAIApiKey = OpenAIApiKey("-")
     ollama_base_url: OllamaBaseUrl = OllamaBaseUrl("http://localhost:11434")
     embedding_model: EmbeddingModelName = EmbeddingModelName("BAAI/bge-small-en-v1.5")
     embedding_device: EmbeddingDevice = EmbeddingDevice("auto")
@@ -76,6 +84,7 @@ class BuildConfig:
 def make_generation_config(config: BuildConfig) -> JsonObject:
     payload = asdict(config)
     payload["out_dir"] = str(config.out_dir)
+    payload["openai_api_key"] = "***" if config.openai_api_key != OpenAIApiKey("-") else "-"
     payload["labels"] = list(LABELS)
     payload["route_instructions"] = ROUTE_INSTRUCTIONS
     return payload
@@ -97,7 +106,13 @@ def build_summary(
     leakage: MetricPayload,
 ) -> JsonObject:
     return {
+        "generator_backend": config.generator_backend,
         "generator_model": config.generator_model,
+        "model_server_url": generation_server_url(
+            backend=config.generator_backend,
+            openai_base_url=config.openai_base_url,
+            ollama_base_url=config.ollama_base_url,
+        ),
         "embedding_model": config.embedding_model,
         "embedding_device": config.embedding_device,
         "train_rows": len(train),
@@ -128,12 +143,22 @@ def build_dataset(
     embedder: Embedder | None = None,
     seeds: list[SeedRecord] | None = None,
 ) -> JsonObject:
+    config = replace(
+        config,
+        generator_backend=normalize_generator_backend(config.generator_backend),
+    )
     if config.train_size % len(LABELS) != 0 or config.eval_size % len(LABELS) != 0:
         raise ValueError("train_size and eval_size must be divisible by the number of labels.")
     if config.generation_batch_size < 1:
         raise ValueError("generation_batch_size must be at least 1.")
     if client is None and not config.skip_model_check:
-        assert_ollama_model_available(config.generator_model, config.ollama_base_url)
+        assert_generation_backend_available(
+            backend=config.generator_backend,
+            model=config.generator_model,
+            openai_base_url=config.openai_base_url,
+            openai_api_key=config.openai_api_key,
+            ollama_base_url=config.ollama_base_url,
+        )
 
     out_dir = config.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -147,7 +172,13 @@ def build_dataset(
     log_info(
         GeneratedText("Starting synthetic finance data generation"),
         {
+            GeneratedText("generator_backend"): config.generator_backend,
             GeneratedText("generator_model"): config.generator_model,
+            GeneratedText("model_server_url"): generation_server_url(
+                backend=config.generator_backend,
+                openai_base_url=config.openai_base_url,
+                ollama_base_url=config.ollama_base_url,
+            ),
             GeneratedText("ollama_base_url"): config.ollama_base_url,
             GeneratedText("embedding_model"): config.embedding_model,
             GeneratedText("embedding_device_requested"): config.embedding_device,
@@ -167,12 +198,17 @@ def build_dataset(
         config=make_generation_config(config),
     )
     started = perf_counter()
+    accepted_candidates_handle = None
+    rejected_handle = None
 
     try:
         if client is None:
-            client = DeepAgentOllamaClient(
+            client = create_generation_client(
+                backend=config.generator_backend,
                 model=config.generator_model,
-                base_url=config.ollama_base_url,
+                openai_base_url=config.openai_base_url,
+                openai_api_key=config.openai_api_key,
+                ollama_base_url=config.ollama_base_url,
                 temperature=config.temperature,
             )
         if embedder is None:
@@ -205,6 +241,22 @@ def build_dataset(
         max_attempts = per_route_candidate_goal * config.max_attempts_multiplier * len(LABELS)
         accepted: list[RouterExample] = []
         rejected: list[RejectedCandidate] = []
+        accepted_candidates_handle = (out_dir / "accepted_candidates.jsonl").open(
+            "w",
+            encoding="utf-8",
+        )
+        rejected_handle = (out_dir / "rejected.jsonl").open("w", encoding="utf-8")
+
+        def record_accepted(row: RouterExample) -> None:
+            accepted.append(row)
+            accepted_candidates_handle.write(json.dumps(row.to_json(), ensure_ascii=False) + "\n")
+            accepted_candidates_handle.flush()
+
+        def record_rejected(row: RejectedCandidate) -> None:
+            rejected.append(row)
+            rejected_handle.write(json.dumps(row.to_json(), ensure_ascii=False) + "\n")
+            rejected_handle.flush()
+
         seed_group_counts: dict[GroupKey, int] = defaultdict(int)
         route_counts: Counter[RouteName] = Counter()
         diversity = DiversityIndex(threshold=config.similarity_threshold)
@@ -246,7 +298,7 @@ def build_dataset(
                 raw = client.generate(prompt)
                 objects = parse_json_objects(raw)
             except Exception as exc:
-                rejected.append(
+                record_rejected(
                     RejectedCandidate(
                         reason=RejectionReason("generation_or_parse_error"),
                         raw_text=GeneratedText(str(exc)),
@@ -267,7 +319,7 @@ def build_dataset(
             batch_accepted = 0
             for obj in objects:
                 if seed_group_counts[seed_record.group_key] >= config.max_per_seed_group:
-                    rejected.append(
+                    record_rejected(
                         RejectedCandidate(
                             reason=RejectionReason("seed_group_cap"),
                             raw_text=GeneratedText(json.dumps(obj, ensure_ascii=False)),
@@ -281,17 +333,18 @@ def build_dataset(
                     obj,
                     expected_route=route,
                     seed=seed_record,
+                    generator_backend=config.generator_backend,
                     generator_model=config.generator_model,
                     embedding_model=config.embedding_model,
                     generation_batch_id=batch_id,
                 )
                 if isinstance(result, RejectedCandidate):
-                    rejected.append(result)
+                    record_rejected(result)
                     continue
                 vector = embedder.encode_one(result.text)
                 accepted_by_diversity, nearest = diversity.accept(result.route, vector)
                 if not accepted_by_diversity:
-                    rejected.append(
+                    record_rejected(
                         RejectedCandidate(
                             reason=RejectionReason("low_diversity_embedding"),
                             raw_text=result.text,
@@ -304,7 +357,7 @@ def build_dataset(
                     continue
 
                 result.metadata["nearest_similarity"] = nearest
-                accepted.append(result)
+                record_accepted(result)
                 seed_group_counts[seed_record.group_key] += 1
                 route_counts[result.route] += 1
                 batch_accepted += 1
@@ -344,7 +397,6 @@ def build_dataset(
         )
         write_jsonl(out_dir / "train.jsonl", train)
         write_jsonl(out_dir / "eval.jsonl", eval_rows)
-        write_rejected_jsonl(out_dir / "rejected.jsonl", rejected)
         (out_dir / "generation_config.json").write_text(
             json.dumps(make_generation_config(config), indent=2),
             encoding="utf-8",
@@ -379,4 +431,8 @@ def build_dataset(
         wandb_logger.finish(summary=summary)
         return summary
     finally:
+        if accepted_candidates_handle is not None:
+            accepted_candidates_handle.close()
+        if rejected_handle is not None:
+            rejected_handle.close()
         event_logger.close()

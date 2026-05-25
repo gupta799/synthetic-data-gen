@@ -115,10 +115,3 @@ def write_jsonl(path: Path, rows: Iterable[RouterExample]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row.to_json(), ensure_ascii=False) + "\n")
-
-
-def write_rejected_jsonl(path: Path, rows: Iterable[RejectedCandidate]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row.to_json(), ensure_ascii=False) + "\n")
